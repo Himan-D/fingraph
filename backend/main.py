@@ -1,0 +1,105 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+import logging
+import asyncio
+
+from config import settings
+from api.routes import quotes, fundamentals, screener, graph, ai, news, watchlist
+from db.postgres import init_db
+from db.redis_client import init_redis, close_redis
+from core.services.truedata_service import TrueDataService
+from core.background_tasks import build_knowledge_graph, scrape_and_store_news
+from core.scheduler import start_scheduler, stop_scheduler
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+background_tasks = []
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Starting FinGraph Terminal...")
+
+    # Initialize databases
+    await init_db()
+    await init_redis()
+
+    # Initialize TrueData service
+    if settings.TRUEDATA_USERNAME and settings.TRUEDATA_PASSWORD:
+        app.state.truedata = TrueDataService()
+        await app.state.truedata.connect()
+        logger.info("TrueData service connected")
+
+    # Start background scheduler
+    try:
+        start_scheduler()
+    except Exception as e:
+        logger.warning(f"Scheduler start skipped: {e}")
+
+    # Run initial data fetch
+    try:
+        await build_knowledge_graph()
+    except Exception as e:
+        logger.warning(f"Knowledge graph init skipped: {e}")
+
+    try:
+        await scrape_and_store_news()
+    except Exception as e:
+        logger.warning(f"News scraping skipped: {e}")
+
+    yield
+
+    # Cleanup
+    if hasattr(app.state, "truedata"):
+        await app.state.truedata.disconnect()
+    stop_scheduler()
+    await close_redis()
+    logger.info("FinGraph Terminal shutdown complete")
+
+
+app = FastAPI(
+    title="FinGraph Terminal API",
+    description="Indian Stock Market Intelligence Terminal",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include routers
+app.include_router(
+    quotes.router, prefix=f"{settings.API_V1_PREFIX}/quotes", tags=["quotes"]
+)
+app.include_router(
+    fundamentals.router, prefix=f"{settings.API_V1_PREFIX}", tags=["fundamentals"]
+)
+app.include_router(
+    screener.router, prefix=f"{settings.API_V1_PREFIX}/screen", tags=["screener"]
+)
+app.include_router(
+    graph.router, prefix=f"{settings.API_V1_PREFIX}/graph", tags=["graph"]
+)
+app.include_router(ai.router, prefix=f"{settings.API_V1_PREFIX}/ai", tags=["ai"])
+app.include_router(news.router, prefix=f"{settings.API_V1_PREFIX}/news", tags=["news"])
+app.include_router(
+    watchlist.router, prefix=f"{settings.API_V1_PREFIX}/watchlist", tags=["watchlist"]
+)
+
+
+@app.get("/")
+async def root():
+    return {"message": "FinGraph Terminal API", "version": "1.0.0"}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
