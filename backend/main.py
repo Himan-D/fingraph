@@ -15,6 +15,7 @@ from api.routes import (
     watchlist,
     search,
     webhooks,
+    sebi,
 )
 from db.postgres import init_db
 from db.redis_client import init_redis, close_redis
@@ -109,6 +110,7 @@ app.include_router(
 app.include_router(
     webhooks.router, prefix=f"{settings.API_V1_PREFIX}/webhooks", tags=["webhooks"]
 )
+app.include_router(sebi.router, prefix=f"{settings.API_V1_PREFIX}/sebi", tags=["sebi"])
 
 
 @app.get("/")
