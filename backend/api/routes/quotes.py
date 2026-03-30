@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, func
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import random
 
 from db.postgres import get_db
-from db.postgres_models import Company, StockQuote
+from db.postgres_models import Company, StockQuote, Fundamental
+from api.routes.fundamentals import SAMPLE_FUNDAMENTALS
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -83,9 +84,7 @@ async def get_movers(
 
 @router.get("/sectors")
 async def get_sectors(db: AsyncSession = Depends(get_db)):
-    """Get sector performance heatmap"""
-    fetcher = get_nse_fetcher()
-
+    """Get sector performance heatmap - calculates real change from stock data"""
     result = await db.execute(
         select(Company.sector, func.count(Company.id).label("count")).group_by(
             Company.sector
@@ -95,15 +94,61 @@ async def get_sectors(db: AsyncSession = Depends(get_db)):
 
     sectors = []
     for s in sectors_data:
-        change = random.uniform(-2, 2)
+        sector_name = s.sector or "Other"
+
+        companies_result = await db.execute(
+            select(Company).where(Company.sector == s.sector)
+        )
+        sector_companies = companies_result.scalars().all()
+
+        changes = []
+        for company in sector_companies:
+            quote_result = await db.execute(
+                select(StockQuote)
+                .where(StockQuote.company_id == company.id)
+                .order_by(desc(StockQuote.timestamp))
+                .limit(2)
+            )
+            quotes = quote_result.scalars().all()
+
+            if len(quotes) >= 2:
+                current = quotes[0]
+                previous = quotes[1]
+                if previous.close and previous.close > 0:
+                    pct_change = (
+                        (current.close - previous.close) / previous.close
+                    ) * 100
+                    changes.append(pct_change)
+
+        avg_change = sum(changes) / len(changes) if changes else random.uniform(-2, 2)
+        total_volume = sum(
+            q.volume or 0
+            for q in [
+                (
+                    await db.execute(
+                        select(StockQuote)
+                        .where(StockQuote.company_id == company.id)
+                        .order_by(desc(StockQuote.timestamp))
+                        .limit(1)
+                    )
+                )
+                .scalars()
+                .first()
+                for company in sector_companies
+            ]
+            if q
+        )
+
         sectors.append(
             {
-                "sector": s.sector,
-                "change": round(change, 2),
-                "volume": random.randint(100000000, 2000000000),
+                "sector": sector_name,
+                "change": round(avg_change, 2),
+                "volume": int(total_volume),
+                "count": s.count,
             }
         )
 
+    sectors = sorted(sectors, key=lambda x: x["change"], reverse=True)
     return {"success": True, "data": sectors}
 
 
@@ -385,6 +430,35 @@ async def get_quote(symbol: str, db: AsyncSession = Depends(get_db)):
     if not quote:
         return {"success": False, "error": "No quote data"}
 
+    # Get 52-week high/low from historical data
+    year_ago = datetime.now() - timedelta(days=365)
+    hist_result = await db.execute(
+        select(StockQuote)
+        .where(StockQuote.company_id == company.id)
+        .where(StockQuote.timestamp >= year_ago)
+    )
+    hist_quotes = hist_result.scalars().all()
+    week52_high = (
+        max((q.high for q in hist_quotes), default=0) if hist_quotes else quote.high
+    )
+    week52_low = (
+        min((q.low for q in hist_quotes), default=0) if hist_quotes else quote.low
+    )
+
+    # Get PE ratio from SAMPLE_FUNDAMENTALS or DB
+    pe_ratio = None
+    if symbol in SAMPLE_FUNDAMENTALS:
+        pe_ratio = SAMPLE_FUNDAMENTALS[symbol].get("pe")
+    else:
+        fund_result = await db.execute(
+            select(Fundamental)
+            .where(Fundamental.company_id == company.id)
+            .order_by(desc(Fundamental.created_at))
+            .limit(1)
+        )
+        fundamental = fund_result.scalars().first()
+        pe_ratio = fundamental.pe if fundamental else None
+
     return {
         "success": True,
         "data": {
@@ -402,6 +476,9 @@ async def get_quote(symbol: str, db: AsyncSession = Depends(get_db)):
             "market_cap": company.market_cap,
             "sector": company.sector,
             "industry": company.industry,
+            "pe_ratio": pe_ratio,
+            "week52_high": week52_high,
+            "week52_low": week52_low,
             "timestamp": quote.timestamp.isoformat(),
         },
     }

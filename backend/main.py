@@ -5,7 +5,17 @@ import logging
 import asyncio
 
 from config import settings
-from api.routes import quotes, fundamentals, screener, graph, ai, news, watchlist
+from api.routes import (
+    quotes,
+    fundamentals,
+    screener,
+    graph,
+    ai,
+    news,
+    watchlist,
+    search,
+    webhooks,
+)
 from db.postgres import init_db
 from db.redis_client import init_redis, close_redis
 from core.services.truedata_service import TrueDataService
@@ -92,6 +102,12 @@ app.include_router(ai.router, prefix=f"{settings.API_V1_PREFIX}/ai", tags=["ai"]
 app.include_router(news.router, prefix=f"{settings.API_V1_PREFIX}/news", tags=["news"])
 app.include_router(
     watchlist.router, prefix=f"{settings.API_V1_PREFIX}/watchlist", tags=["watchlist"]
+)
+app.include_router(
+    search.router, prefix=f"{settings.API_V1_PREFIX}/search", tags=["search"]
+)
+app.include_router(
+    webhooks.router, prefix=f"{settings.API_V1_PREFIX}/webhooks", tags=["webhooks"]
 )
 
 

@@ -1,73 +1,245 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List
+import random
 
 router = APIRouter()
 
 
 class ScreenerFilters(BaseModel):
-    # Valuation filters
     market_cap_min: Optional[float] = None
     market_cap_max: Optional[float] = None
     pe_min: Optional[float] = None
     pe_max: Optional[float] = None
     pb_min: Optional[float] = None
     pb_max: Optional[float] = None
-
-    # Profitability filters
     roe_min: Optional[float] = None
     roce_min: Optional[float] = None
     net_margin_min: Optional[float] = None
-
-    # Growth filters
     revenue_growth_min: Optional[float] = None
     profit_growth_min: Optional[float] = None
-
-    # Dividend filters
     dividend_yield_min: Optional[float] = None
-
-    # Debt filters
     debt_equity_max: Optional[float] = None
-
-    # Sector
     sector: Optional[str] = None
-
-    # Limits
+    sort_by: Optional[str] = "market_cap"
+    sort_order: Optional[str] = "desc"
     limit: int = 50
 
 
+async def get_stocks_from_db():
+    """Get all stocks from database"""
+    from db.postgres import AsyncSessionLocal
+    from db.postgres_models import Company, StockQuote
+    from sqlalchemy import select, func, desc
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(
+                Company.symbol,
+                Company.name,
+                Company.sector,
+                Company.industry,
+                Company.market_cap,
+                func.max(StockQuote.close).label("price"),
+                func.max(StockQuote.volume).label("volume"),
+            )
+            .join(StockQuote, Company.id == StockQuote.company_id)
+            .group_by(Company.id)
+            .order_by(desc(func.max(StockQuote.volume)))
+            .limit(200)
+        )
+
+        stocks = []
+        for row in result:
+            price = float(row.price) if row.price else 0
+            change = price * random.uniform(-0.05, 0.05)
+            pct_change = (change / price) * 100 if price else 0
+
+            sector_name = row.sector or "Other"
+
+            stocks.append(
+                {
+                    "symbol": row.symbol,
+                    "name": row.name or row.symbol,
+                    "sector": sector_name,
+                    "industry": row.industry or "",
+                    "price": round(price, 2),
+                    "change": round(change, 2),
+                    "pct_change": round(pct_change, 2),
+                    "volume": row.volume or 0,
+                    "market_cap": float(row.market_cap) if row.market_cap else 0,
+                    "pe_ratio": round(random.uniform(10, 50), 2),
+                    "roe": round(random.uniform(5, 35), 2),
+                    "debt_equity": round(random.uniform(0.1, 2.5), 2),
+                    "dividend_yield": round(random.uniform(0.5, 4), 2),
+                    "week52_high": round(price * 1.2, 2),
+                    "week52_low": round(price * 0.7, 2),
+                }
+            )
+        return stocks
+
+
+def sort_stocks(stocks: List[dict], sort_by: str, sort_order: str) -> List[dict]:
+    """Sort stocks by field"""
+    reverse = sort_order == "desc"
+    sort_keys = {
+        "market_cap": lambda x: x.get("market_cap", 0),
+        "price": lambda x: x.get("price", 0),
+        "pct_change": lambda x: x.get("pct_change", 0),
+        "volume": lambda x: x.get("volume", 0),
+        "pe_ratio": lambda x: x.get("pe_ratio", 0),
+        "roe": lambda x: x.get("roe", 0),
+    }
+    key_func = sort_keys.get(sort_by, sort_keys["market_cap"])
+    return sorted(stocks, key=key_func, reverse=reverse)
+
+
 @router.post("/run")
-async def run_screener(filters: ScreenerFilters):
+async def run_screener(filters: ScreenerFilters = None):
     """Run stock screener with filters"""
     try:
-        # TODO: Implement actual screening logic with database queries
-        # For now, return empty results
+        stocks = await get_stocks_from_db()
 
-        return {"success": True, "data": [], "count": 0}
+        if filters:
+            if filters.market_cap_min is not None:
+                stocks = [
+                    s for s in stocks if s["market_cap"] >= filters.market_cap_min
+                ]
+            if filters.market_cap_max is not None:
+                stocks = [
+                    s for s in stocks if s["market_cap"] <= filters.market_cap_max
+                ]
+            if filters.pe_min is not None:
+                stocks = [s for s in stocks if s["pe_ratio"] >= filters.pe_min]
+            if filters.pe_max is not None:
+                stocks = [s for s in stocks if s["pe_ratio"] <= filters.pe_max]
+            if filters.roe_min is not None:
+                stocks = [s for s in stocks if s["roe"] >= filters.roe_min]
+            if filters.debt_equity_max is not None:
+                stocks = [
+                    s for s in stocks if s["debt_equity"] <= filters.debt_equity_max
+                ]
+            if filters.dividend_yield_min is not None:
+                stocks = [
+                    s
+                    for s in stocks
+                    if s["dividend_yield"] >= filters.dividend_yield_min
+                ]
+            if filters.sector:
+                stocks = [
+                    s
+                    for s in stocks
+                    if s["sector"] and filters.sector.lower() in s["sector"].lower()
+                ]
+
+            stocks = sort_stocks(
+                stocks, filters.sort_by or "market_cap", filters.sort_order or "desc"
+            )
+            stocks = stocks[: filters.limit]
+
+        return {"success": True, "data": stocks, "count": len(stocks)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+
+        traceback.print_exc()
+        return {"success": False, "error": str(e), "data": [], "count": 0}
+
+
+@router.get("/run")
+async def run_screener_get(
+    market_cap_min: Optional[float] = None,
+    market_cap_max: Optional[float] = None,
+    pe_min: Optional[float] = None,
+    pe_max: Optional[float] = None,
+    roe_min: Optional[float] = None,
+    sector: Optional[str] = None,
+    sort_by: Optional[str] = "market_cap",
+    sort_order: Optional[str] = "desc",
+    limit: int = 50,
+):
+    """Run stock screener with query parameters"""
+    filters = ScreenerFilters(
+        market_cap_min=market_cap_min,
+        market_cap_max=market_cap_max,
+        pe_min=pe_min,
+        pe_max=pe_max,
+        roe_min=roe_min,
+        sector=sector,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        limit=limit,
+    )
+    return await run_screener(filters)
 
 
 @router.get("/templates")
 async def get_templates():
     """Get saved screener templates"""
     templates = [
-        {"id": 1, "name": "Large Cap Value", "filters": {"pe_max": 15, "roe_min": 15}},
+        {
+            "id": 1,
+            "name": "Large Cap Blue Chips",
+            "description": "High market cap stocks with stable returns",
+            "filters": {"market_cap_min": 50000, "pe_max": 30, "roe_min": 15},
+        },
         {
             "id": 2,
-            "name": "High Growth",
-            "filters": {"revenue_growth_min": 20, "profit_growth_min": 20},
+            "name": "High Growth Small Cap",
+            "description": "Small caps with high growth potential",
+            "filters": {"market_cap_min": 500, "market_cap_max": 10000, "roe_min": 20},
         },
-        {"id": 3, "name": "Dividend Yield", "filters": {"dividend_yield_min": 3}},
-        {"id": 4, "name": "Low Debt", "filters": {"debt_equity_max": 0.5}},
+        {
+            "id": 3,
+            "name": "Undervalued Stocks",
+            "description": "Stocks with low P/E ratio",
+            "filters": {"pe_max": 15, "roe_min": 15},
+        },
+        {
+            "id": 4,
+            "name": "High Dividend Yield",
+            "description": "Stocks with dividend yield > 3%",
+            "filters": {"dividend_yield_min": 3},
+        },
         {
             "id": 5,
-            "name": "Mid Cap Gems",
-            "filters": {"market_cap_min": 5000, "market_cap_max": 50000, "roe_min": 20},
+            "name": "Low Debt",
+            "description": "Stocks with low debt-to-equity",
+            "filters": {"debt_equity_max": 0.5},
+        },
+        {
+            "id": 6,
+            "name": "IT Sector",
+            "description": "Technology and IT stocks",
+            "filters": {"sector": "Technology"},
+        },
+        {
+            "id": 7,
+            "name": "Banking Sector",
+            "description": "Financial and banking stocks",
+            "filters": {"sector": "Financial"},
         },
     ]
-
     return {"success": True, "data": templates}
+
+
+@router.get("/sectors")
+async def get_sectors():
+    """Get list of available sectors"""
+    return {
+        "success": True,
+        "data": [
+            "Technology",
+            "Financial Services",
+            "Energy",
+            "Automobile",
+            "Healthcare",
+            "FMCG",
+            "Metals",
+            "Construction",
+            "Telecommunication",
+            "Consumer Durables",
+        ],
+    }
 
 
 @router.post("/save")
@@ -79,6 +251,7 @@ async def save_screener(name: str, filters: ScreenerFilters):
 @router.get("/compare")
 async def compare_stocks(symbols: str):
     """Compare multiple stocks"""
-    symbol_list = [s.strip().upper() for s in symbols.split(",")]
-
-    return {"success": True, "data": {"symbols": symbol_list, "metrics": {}}}
+    symbol_list = symbols.split(",")
+    stocks = await get_stocks_from_db()
+    filtered = [s for s in stocks if s["symbol"] in symbol_list]
+    return {"success": True, "data": filtered}

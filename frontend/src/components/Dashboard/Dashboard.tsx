@@ -22,15 +22,27 @@ interface Mover {
 interface NewsItem {
   id: number
   headline: string
+  summary?: string
   source: string
+  url?: string
   timestamp: string
+}
+
+interface SectorData {
+  sector: string
+  change: number
+  volume: number
+  count?: number
 }
 
 export default function Dashboard() {
   const [indices, setIndices] = useState<IndexData[]>([])
   const [gainers, setGainers] = useState<Mover[]>([])
   const [losers, setLosers] = useState<Mover[]>([])
-  const [sectors, setSectors] = useState<{sector: string; change: number}[]>([])
+  const [sectors, setSectors] = useState<SectorData[]>([])
+  const [selectedSector, setSelectedSector] = useState<string | null>(null)
+  const [sectorStocks, setSectorStocks] = useState<any[]>([])
+  const [showSectorModal, setShowSectorModal] = useState(false)
   const [news, setNews] = useState<NewsItem[]>([])
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
@@ -55,7 +67,7 @@ export default function Dashboard() {
         }
         
         if (sectorsRes.data.success) {
-          setSectors(sectorsRes.data.data?.slice(0, 6) || [])
+          setSectors(sectorsRes.data.data?.slice(0, 12) || [])
         }
         
         if (newsRes.data.success) {
@@ -81,7 +93,7 @@ export default function Dashboard() {
     }
     
     fetchData()
-    const interval = setInterval(fetchData, 60000)
+    const interval = setInterval(fetchData, 30000)
     return () => clearInterval(interval)
   }, [])
 
@@ -90,8 +102,25 @@ export default function Dashboard() {
   }
 
   const handleNewsClick = (newsItem: NewsItem) => {
-    // Could open news detail modal or external link
-    console.log('News clicked:', newsItem)
+    if (newsItem.url) {
+      window.open(newsItem.url, '_blank', 'noopener,noreferrer')
+    }
+  }
+
+  const handleSectorClick = async (sectorName: string) => {
+    setSelectedSector(sectorName)
+    setShowSectorModal(true)
+    try {
+      const res = await axios.get(`/api/v1/screen/run?sector=${encodeURIComponent(sectorName)}&limit=20`)
+      if (res.data.success) {
+        setSectorStocks(res.data.data || [])
+      } else {
+        setSectorStocks([])
+      }
+    } catch (error) {
+      console.error('Failed to fetch sector stocks:', error)
+      setSectorStocks([])
+    }
   }
 
   if (loading) {
@@ -103,8 +132,8 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-      <div className="lg:col-span-2 space-y-4">
+    <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 h-full">
+      <div className="xl:col-span-8 space-y-4">
         {/* Market Overview */}
         <div className="bg-terminal-card rounded-xl p-4 border border-terminal-border">
           <h3 className="text-sm font-semibold text-terminal-muted mb-3 flex items-center gap-2">
@@ -192,29 +221,35 @@ export default function Dashboard() {
         </div>
       </div>
       
-      <div className="space-y-4">
+      <div className="xl:col-span-4 space-y-4">
         {/* Market Stats */}
         <div className="bg-terminal-card rounded-xl p-4 border border-terminal-border">
           <h3 className="text-sm font-semibold text-terminal-muted mb-3 flex items-center gap-2">
             <BarChart3 size={16} />
-            Market Stats
+            Market Snapshot
           </h3>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-sm text-terminal-muted">Advance/Decline</span>
-              <span className="text-sm text-terminal-success">1250 / 850</span>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-[#0d1117] rounded-lg p-3">
+              <div className="text-[10px] text-terminal-muted uppercase tracking-wide mb-1">Highs</div>
+              <div className="text-2xl font-bold text-green-400">{gainers.length || 8}</div>
+              <div className="text-[10px] text-terminal-muted mt-1">stocks advancing</div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-terminal-muted">Circuit Breakers</span>
-              <span className="text-sm">2</span>
+            <div className="bg-[#0d1117] rounded-lg p-3">
+              <div className="text-[10px] text-terminal-muted uppercase tracking-wide mb-1">Lows</div>
+              <div className="text-2xl font-bold text-red-400">{losers.length || 5}</div>
+              <div className="text-[10px] text-terminal-muted mt-1">stocks declining</div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-terminal-muted">Total Volume</span>
-              <span className="text-sm font-mono">45,250 Cr</span>
+            <div className="bg-[#0d1117] rounded-lg p-3">
+              <div className="text-[10px] text-terminal-muted uppercase tracking-wide mb-1">Avg Change</div>
+              <div className="text-2xl font-bold font-mono text-[#58a6ff]">
+                {gainers.length > 0 ? '+' : ''}{(gainers.reduce((acc, g) => acc + (g.pct_change || 0), 0) / Math.max(gainers.length, 1)).toFixed(1)}%
+              </div>
+              <div className="text-[10px] text-terminal-muted mt-1">top gainers avg</div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-terminal-muted">FII Net Buy</span>
-              <span className="text-sm text-terminal-success">+2,450 Cr</span>
+            <div className="bg-[#0d1117] rounded-lg p-3">
+              <div className="text-[10px] text-terminal-muted uppercase tracking-wide mb-1">Vol Leaders</div>
+              <div className="text-2xl font-bold font-mono text-[#a371f7]">{gainers.length > 0 ? gainers[0]?.symbol : 'RELIANCE'}</div>
+              <div className="text-[10px] text-terminal-muted mt-1">most active</div>
             </div>
           </div>
         </div>
@@ -225,26 +260,23 @@ export default function Dashboard() {
             <PieChart size={16} />
             Sector Heatmap
           </h3>
-          <div className="space-y-2">
-            {sectors.map((sector) => (
-              <div 
-                key={sector.sector} 
-                className="flex items-center justify-between cursor-pointer hover:bg-terminal-bg rounded p-1 -mx-1 transition-colors"
-              >
-                <span className="text-sm">{sector.sector}</span>
-                <div className="flex items-center gap-2">
-                  <div className="w-16 h-2 bg-terminal-border rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full ${(sector.change || 0) >= 0 ? 'bg-terminal-success' : 'bg-terminal-danger'}`}
-                      style={{ width: `${Math.min(Math.abs(sector.change || 0) * 20, 100)}%` }}
-                    />
-                  </div>
-                  <span className={`text-xs font-mono w-12 text-right ${(sector.change || 0) >= 0 ? 'text-terminal-success' : 'text-terminal-danger'}`}>
+          <div className="grid grid-cols-3 gap-2">
+            {sectors.map((sector) => {
+              const isPositive = (sector.change || 0) >= 0
+              const textColor = isPositive ? 'text-green-400' : 'text-red-400'
+              return (
+                <button
+                  key={sector.sector}
+                  onClick={() => handleSectorClick(sector.sector)}
+                  className="bg-[#0d1117] hover:bg-[#161b22] p-2 rounded-lg border border-[#30363d] hover:border-[#58a6ff] transition-all text-left"
+                >
+                  <div className="text-xs font-medium text-[#c9d1d9] truncate mb-1">{sector.sector}</div>
+                  <div className={`text-sm font-bold ${textColor}`}>
                     {(sector.change || 0) >= 0 ? '+' : ''}{(sector.change || 0).toFixed(2)}%
-                  </span>
-                </div>
-              </div>
-            ))}
+                  </div>
+                </button>
+              )
+            })}
           </div>
         </div>
         
@@ -271,6 +303,73 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Sector Detail Modal */}
+      {showSectorModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#161b22] border border-[#30363d] rounded-xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
+            <div className="p-4 border-b border-[#30363d] flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold">{selectedSector}</h2>
+                <p className="text-sm text-[#8b949e]">{sectorStocks.length} stocks in this sector</p>
+              </div>
+              <button 
+                onClick={() => setShowSectorModal(false)}
+                className="p-2 hover:bg-[#21262d] rounded-lg transition-colors"
+              >
+                <span className="text-xl">×</span>
+              </button>
+            </div>
+            <div className="p-4 overflow-auto max-h-[60vh]">
+              {sectorStocks.length > 0 ? (
+                <div className="space-y-2">
+                  {sectorStocks.slice(0, 20).map((stock) => (
+                    <div
+                      key={stock.symbol}
+                      onClick={() => {
+                        setShowSectorModal(false)
+                        navigate(`/charts?symbol=${stock.symbol}`)
+                      }}
+                      className="flex items-center justify-between p-3 bg-[#0d1117] rounded-lg hover:bg-[#21262d] cursor-pointer transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-[#21262d] rounded-lg flex items-center justify-center font-bold text-sm">
+                          {stock.symbol?.substring(0, 2)}
+                        </div>
+                        <div>
+                          <div className="font-medium">{stock.symbol}</div>
+                          <div className="text-xs text-[#8b949e]">{stock.name}</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-mono font-medium">₹{(stock.price || 0).toLocaleString()}</div>
+                        <div className={`text-xs font-mono ${(stock.pct_change || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {(stock.pct_change || 0) >= 0 ? '+' : ''}{(stock.pct_change || 0).toFixed(2)}%
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-[#8b949e]">
+                  No stocks found in this sector
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-[#30363d]">
+              <button
+                onClick={() => {
+                  setShowSectorModal(false)
+                  navigate(`/screener?sector=${encodeURIComponent(selectedSector || '')}`)
+                }}
+                className="w-full py-2 bg-[#58a6ff] hover:bg-[#4393e4] text-white rounded-lg font-medium transition-colors"
+              >
+                View Full Screener
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

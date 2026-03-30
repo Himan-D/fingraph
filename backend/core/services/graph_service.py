@@ -381,19 +381,123 @@ class Neo4jGraph:
             return {"nodes": [], "edges": []}
 
     async def get_company_graph(self, symbol: str) -> Dict:
-        """Get graph data for a company"""
+        """Get graph data for a company from Neo4j"""
         symbol = symbol.upper()
-
-        # Get company info
-        company = SAMPLE_GRAPH_DATA["companies"].get(symbol, {})
-
-        if not company:
-            return {"nodes": [], "edges": []}
-
         nodes = []
         edges = []
 
-        # Add company node
+        # Try Neo4j first
+        if self.driver:
+            try:
+                with self.driver.session() as session:
+                    # Get company
+                    result = session.run(
+                        """
+                        MATCH (c:Company {symbol: $symbol})
+                        RETURN c.symbol as symbol, c.name as name, c.sector as sector,
+                               c.industry as industry, c.market_cap as market_cap
+                    """,
+                        symbol=symbol,
+                    )
+                    record = result.single()
+
+                    if record:
+                        nodes.append(
+                            {
+                                "id": record["symbol"],
+                                "label": "Company",
+                                "data": {
+                                    "name": record.get("name", symbol),
+                                    "sector": record.get("sector", ""),
+                                    "industry": record.get("industry", ""),
+                                    "market_cap": record.get("market_cap", 0),
+                                },
+                            }
+                        )
+
+                        # Get competitors (COMPETITOR relationships)
+                        result = session.run(
+                            """
+                            MATCH (c:Company {symbol: $symbol})-[r:COMPETITOR]->(comp)
+                            RETURN comp.symbol as symbol, comp.name as name
+                        """,
+                            symbol=symbol,
+                        )
+                        for rec in result:
+                            nodes.append(
+                                {
+                                    "id": rec["symbol"],
+                                    "label": "Company",
+                                    "data": {"name": rec.get("name", rec["symbol"])},
+                                }
+                            )
+                            edges.append(
+                                {
+                                    "from": symbol,
+                                    "to": rec["symbol"],
+                                    "type": "COMPETITOR",
+                                    "label": "Competitor",
+                                }
+                            )
+
+                        # Get sector
+                        sector = record.get("sector")
+                        if sector:
+                            nodes.append(
+                                {
+                                    "id": sector,
+                                    "label": "Sector",
+                                    "data": {"name": sector},
+                                }
+                            )
+                            edges.append(
+                                {
+                                    "from": symbol,
+                                    "to": sector,
+                                    "type": "BELONGS_TO_SECTOR",
+                                    "label": "Belongs to",
+                                }
+                            )
+
+                        # Get companies in same sector
+                        result = session.run(
+                            """
+                            MATCH (c:Company {symbol: $symbol})-[r:BELONGS_TO_SECTOR]->(s:Sector)<-[r2:BELONGS_TO_SECTOR]-(comp)
+                            WHERE comp.symbol <> $symbol
+                            RETURN comp.symbol as symbol, comp.name as name
+                            LIMIT 20
+                        """,
+                            symbol=symbol,
+                        )
+                        for rec in result:
+                            if not any(n["id"] == rec["symbol"] for n in nodes):
+                                nodes.append(
+                                    {
+                                        "id": rec["symbol"],
+                                        "label": "Company",
+                                        "data": {
+                                            "name": rec.get("name", rec["symbol"])
+                                        },
+                                    }
+                                )
+                            edges.append(
+                                {
+                                    "from": rec["symbol"],
+                                    "to": sector,
+                                    "type": "BELONGS_TO_SECTOR",
+                                    "label": "Same Sector",
+                                }
+                            )
+
+                        return {"nodes": nodes, "edges": edges}
+            except Exception as e:
+                logger.warning(f"Failed to get company graph from Neo4j: {e}")
+
+        # Fallback
+        company = SAMPLE_GRAPH_DATA["companies"].get(symbol, {})
+        if not company:
+            return {"nodes": [], "edges": []}
+
         nodes.append(
             {
                 "id": symbol,
@@ -402,26 +506,6 @@ class Neo4jGraph:
             }
         )
 
-        # Add promoter
-        if company.get("promoter"):
-            promoter_id = company["promoter"].replace(" ", "_")
-            nodes.append(
-                {
-                    "id": promoter_id,
-                    "label": "Promoter",
-                    "data": {"name": company["promoter"]},
-                }
-            )
-            edges.append(
-                {
-                    "from": promoter_id,
-                    "to": symbol,
-                    "type": "PROMOTER_OF",
-                    "label": f"Promoter ({company.get('promoter_holding', 0)}%)",
-                }
-            )
-
-        # Add sector
         sector = company.get("sector", "Other")
         nodes.append(
             {
@@ -438,68 +522,6 @@ class Neo4jGraph:
                 "label": "Belongs to",
             }
         )
-
-        # Add index membership
-        for rel in SAMPLE_GRAPH_DATA["relationships"]:
-            if rel["from"] == symbol and rel["type"] == "PART_OF_INDEX":
-                idx = rel["to"]
-                nodes.append(
-                    {
-                        "id": idx,
-                        "label": "Index",
-                        "data": SAMPLE_GRAPH_DATA["indices"].get(idx, {"name": idx}),
-                    }
-                )
-                edges.append(
-                    {
-                        "from": symbol,
-                        "to": idx,
-                        "type": "PART_OF_INDEX",
-                        "label": f"Index Weight: {rel.get('weight', 0)}%",
-                    }
-                )
-
-        # Add competitors
-        for rel in SAMPLE_GRAPH_DATA["relationships"]:
-            if rel["from"] == symbol and rel["type"] == "COMPETES_WITH":
-                comp = rel["to"]
-                comp_data = SAMPLE_GRAPH_DATA["companies"].get(comp, {"name": comp})
-                nodes.append(
-                    {
-                        "id": comp,
-                        "label": "Company",
-                        "data": comp_data,
-                    }
-                )
-                edges.append(
-                    {
-                        "from": symbol,
-                        "to": comp,
-                        "type": "COMPETES_WITH",
-                        "label": "Competitor",
-                    }
-                )
-
-        # Add subsidiaries
-        for rel in SAMPLE_GRAPH_DATA["relationships"]:
-            if rel["from"] == symbol and rel["type"] == "SUBSIDIARY_OF":
-                sub = rel["to"]
-                sub_data = SAMPLE_GRAPH_DATA["companies"].get(sub, {"name": sub})
-                nodes.append(
-                    {
-                        "id": sub,
-                        "label": "Subsidiary",
-                        "data": sub_data,
-                    }
-                )
-                edges.append(
-                    {
-                        "from": symbol,
-                        "to": sub,
-                        "type": "SUBSIDIARY_OF",
-                        "label": f"Owns {rel.get('holding', 100)}%",
-                    }
-                )
 
         return {"nodes": nodes, "edges": edges}
 
@@ -591,11 +613,78 @@ class Neo4jGraph:
         return {"nodes": nodes, "edges": edges}
 
     async def get_full_graph(self) -> Dict:
-        """Get complete knowledge graph"""
+        """Get complete knowledge graph from Neo4j or sample data"""
         nodes = []
         edges = []
 
-        # Add all companies
+        # Try to get data from Neo4j
+        if self.driver:
+            try:
+                with self.driver.session() as session:
+                    # Get all companies
+                    result = session.run("""
+                        MATCH (c:Company)
+                        RETURN c.symbol as symbol, c.name as name, c.sector as sector, 
+                               c.industry as industry, c.market_cap as market_cap
+                        LIMIT 100
+                    """)
+                    for record in result:
+                        nodes.append(
+                            {
+                                "id": record["symbol"],
+                                "label": "Company",
+                                "data": {
+                                    "name": record.get("name", record["symbol"]),
+                                    "sector": record.get("sector", ""),
+                                    "industry": record.get("industry", ""),
+                                    "market_cap": record.get("market_cap", 0),
+                                },
+                            }
+                        )
+
+                    # Get all sectors
+                    result = session.run("""
+                        MATCH (s:Sector)
+                        RETURN s.name as name
+                    """)
+                    for record in result:
+                        sector_name = record["name"]
+                        if not any(n["id"] == sector_name for n in nodes):
+                            nodes.append(
+                                {
+                                    "id": sector_name,
+                                    "label": "Sector",
+                                    "data": {"name": sector_name},
+                                }
+                            )
+
+                    # Get all relationships
+                    result = session.run("""
+                        MATCH (a)-[r]->(b)
+                        RETURN a.symbol as from_symbol, b.symbol as to_symbol, 
+                               type(r) as rel_type
+                    """)
+                    for record in result:
+                        from_sym = record.get("from_symbol")
+                        to_sym = record.get("to_symbol")
+                        if from_sym and to_sym:
+                            edges.append(
+                                {
+                                    "from": from_sym,
+                                    "to": to_sym,
+                                    "type": record.get("rel_type", "RELATED"),
+                                    "label": record.get("rel_type", "RELATED"),
+                                }
+                            )
+
+                    logger.info(
+                        f"Loaded {len(nodes)} nodes and {len(edges)} edges from Neo4j"
+                    )
+                    return {"nodes": nodes, "edges": edges}
+            except Exception as e:
+                logger.warning(f"Failed to get data from Neo4j: {e}")
+
+        # Fallback to sample data
         for symbol, company in SAMPLE_GRAPH_DATA["companies"].items():
             nodes.append(
                 {
@@ -605,7 +694,6 @@ class Neo4jGraph:
                 }
             )
 
-        # Add all sectors
         for sector in SAMPLE_GRAPH_DATA["sectors"].keys():
             if not any(n["id"] == sector for n in nodes):
                 nodes.append(
@@ -616,17 +704,6 @@ class Neo4jGraph:
                     }
                 )
 
-        # Add all indices
-        for idx, data in SAMPLE_GRAPH_DATA["indices"].items():
-            nodes.append(
-                {
-                    "id": idx,
-                    "label": "Index",
-                    "data": data,
-                }
-            )
-
-        # Add all relationships
         for rel in SAMPLE_GRAPH_DATA["relationships"]:
             edges.append(
                 {

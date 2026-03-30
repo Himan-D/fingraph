@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, TrendingUp, TrendingDown, Star, Filter, ChevronRight } from 'lucide-react'
+import { Search, TrendingUp, TrendingDown, Star, ChevronRight } from 'lucide-react'
 import axios from 'axios'
 
 interface Stock {
@@ -30,14 +30,19 @@ interface StockDetail {
 }
 
 export default function Quotes() {
+  const urlSymbol = new URLSearchParams(window.location.search).get('symbol')
+  
   const [stocks, setStocks] = useState<Stock[]>([])
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedStock, setSelectedStock] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState(urlSymbol || '')
+  const [selectedStock, setSelectedStock] = useState<string | null>(urlSymbol)
   const [stockDetail, setStockDetail] = useState<StockDetail | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchStocks()
+    if (urlSymbol) {
+      fetchStockDetail(urlSymbol)
+    }
   }, [])
 
   const fetchStocks = async () => {

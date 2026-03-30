@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
-import { Filter, SlidersHorizontal, ArrowUpDown, ChevronDown, Play, Save, Download } from 'lucide-react'
+import { Filter, SlidersHorizontal, ArrowUpDown, Play, Save, Download, Star } from 'lucide-react'
 
 interface ScreenerResult {
   symbol: string
   name: string
+  sector: string
+  industry: string
   price: number
   change: number
   pct_change: number
@@ -13,56 +15,79 @@ interface ScreenerResult {
   pe_ratio: number
   roe: number
   debt_equity: number
+  dividend_yield: number
 }
 
-interface FilterOption {
-  id: string
-  label: string
-  type: 'min' | 'max' | 'range'
-  value: number | [number, number]
+interface Template {
+  id: number
+  name: string
+  description: string
+  filters: Record<string, any>
 }
 
-const defaultFilters: FilterOption[] = [
-  { id: 'market_cap', label: 'Market Cap (Cr)', type: 'min', value: 1000 },
-  { id: 'pe_ratio', label: 'P/E Ratio', type: 'max', value: 30 },
-  { id: 'volume', label: 'Volume', type: 'min', value: 100000 },
-  { id: 'pct_change', label: 'Change %', type: 'range', value: [-10, 10] },
-]
+interface FilterState {
+  market_cap_min: number | null
+  market_cap_max: number | null
+  pe_min: number | null
+  pe_max: number | null
+  roe_min: number | null
+  debt_equity_max: number | null
+  dividend_yield_min: number | null
+  sector: string
+}
 
 export default function Screener() {
-  const [filters, setFilters] = useState<FilterOption[]>(defaultFilters)
   const [results, setResults] = useState<ScreenerResult[]>([])
   const [loading, setLoading] = useState(false)
   const [showFilters, setShowFilters] = useState(true)
-  const [sortBy, setSortBy] = useState<string>('market_cap')
+  const [sortBy, setSortBy] = useState('market_cap')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [templates, setTemplates] = useState<Template[]>([])
   const [activeTab, setActiveTab] = useState<'custom' | 'templates'>('templates')
+  const [filters, setFilters] = useState<FilterState>({
+    market_cap_min: null,
+    market_cap_max: null,
+    pe_min: null,
+    pe_max: null,
+    roe_min: null,
+    debt_equity_max: null,
+    dividend_yield_min: null,
+    sector: '',
+  })
 
-  const templates = [
-    { name: 'Large Cap Blue Chips', filters: { market_cap: 50000, pe_ratio: 25, volume: 500000 } },
-    { name: 'High Growth Small Cap', filters: { market_cap: [500, 10000], pct_change: [2, 100], volume: 200000 } },
-    { name: 'Undervalued Stocks', filters: { pe_ratio: [0, 15], roe: 15 } },
-    { name: 'High Volume', filters: { volume: 5000000 } },
-    { name: 'Nifty 50', filters: { index: 'NIFTY 50' } },
-    { name: 'Bank Stocks', filters: { sector: 'Financial Services' } },
-    { name: 'IT Stocks', filters: { sector: 'Technology' } },
-  ]
+  useEffect(() => {
+    fetchTemplates()
+    runScreener()
+  }, [])
+
+  const fetchTemplates = async () => {
+    try {
+      const response = await axios.get('/api/v1/screen/templates')
+      if (response.data.success) {
+        setTemplates(response.data.data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch templates:', error)
+    }
+  }
 
   const runScreener = async () => {
     setLoading(true)
     try {
-      // Build filter params
-      const params: Record<string, string> = {}
-      filters.forEach(f => {
-        if (typeof f.value === 'number') {
-          params[f.id] = f.value.toString()
-        } else if (Array.isArray(f.value)) {
-          params[`${f.id}_min`] = f.value[0].toString()
-          params[`${f.id}_max`] = f.value[1].toString()
-        }
-      })
-      params['sort_by'] = sortBy
-      params['sort_order'] = sortOrder
+      const params: Record<string, any> = {
+        sort_by: sortBy,
+        sort_order: sortOrder,
+        limit: 50,
+      }
+      
+      if (filters.market_cap_min) params.market_cap_min = filters.market_cap_min * 10000000
+      if (filters.market_cap_max) params.market_cap_max = filters.market_cap_max * 10000000
+      if (filters.pe_min) params.pe_min = filters.pe_min
+      if (filters.pe_max) params.pe_max = filters.pe_max
+      if (filters.roe_min) params.roe_min = filters.roe_min
+      if (filters.debt_equity_max) params.debt_equity_max = filters.debt_equity_max
+      if (filters.dividend_yield_min) params.dividend_yield_min = filters.dividend_yield_min
+      if (filters.sector) params.sector = filters.sector
 
       const response = await axios.get('/api/v1/screen/run', { params })
       if (response.data.success) {
@@ -70,59 +95,36 @@ export default function Screener() {
       }
     } catch (error) {
       console.error('Screener failed:', error)
-      // Fallback: use movers data
-      try {
-        const moversRes = await axios.get('/api/v1/quotes/movers')
-        if (moversRes.data.success) {
-          const allStocks = [
-            ...(moversRes.data.data?.gainers || []),
-            ...(moversRes.data.data?.losers || [])
-          ].map((s: any) => ({
-            ...s,
-            market_cap: Math.random() * 1000000,
-            pe_ratio: Math.random() * 40,
-            roe: Math.random() * 30,
-            debt_equity: Math.random() * 2,
-          }))
-          setResults(allStocks.slice(0, 20))
-        }
-      } catch (err) {
-        console.error('Fallback failed:', err)
-      }
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => {
-    runScreener()
-  }, [])
-
-  const updateFilter = (id: string, value: number | [number, number]) => {
-    setFilters(filters.map(f => f.id === id ? { ...f, value } : f))
-  }
-
-  const applyTemplate = (template: typeof templates[0]) => {
-    const newFilters = [...filters]
+  const applyTemplate = (template: Template) => {
+    const newFilters: FilterState = { ...filters }
     Object.entries(template.filters).forEach(([key, value]) => {
-      const idx = newFilters.findIndex(f => f.id === key)
-      if (idx >= 0) {
-        if (Array.isArray(value)) {
-          newFilters[idx] = { ...newFilters[idx], value }
-        } else {
-          newFilters[idx] = { ...newFilters[idx], value }
-        }
+      if (key in newFilters && value !== undefined) {
+        (newFilters as any)[key] = value
       }
     })
     setFilters(newFilters)
-    runScreener()
+    setTimeout(runScreener, 100)
   }
 
-  const formatValue = (value: number, type: string) => {
-    if (type === 'market_cap') return `₹${(value / 10000000).toFixed(1)}L Cr`
-    if (type === 'volume') return `${(value / 1000000).toFixed(1)}M`
-    if (['pe_ratio', 'roe', 'pct_change', 'debt_equity'].includes(type)) return value.toFixed(2)
-    return value.toLocaleString()
+  const formatMarketCap = (value: number) => {
+    if (!value) return '-'
+    const cr = value / 10000000
+    if (cr >= 100000) return `${(cr / 100000).toFixed(1)}L Cr`
+    if (cr >= 1000) return `${(cr / 1000).toFixed(1)}K Cr`
+    return `${cr.toFixed(1)} Cr`
+  }
+
+  const formatVolume = (value: number) => {
+    if (!value) return '-'
+    if (value >= 10000000) return `${(value / 10000000).toFixed(1)}Cr`
+    if (value >= 100000) return `${(value / 100000).toFixed(1)}L`
+    if (value >= 1000) return `${(value / 1000).toFixed(1)}K`
+    return value.toString()
   }
 
   return (
@@ -132,6 +134,7 @@ export default function Screener() {
         <div className="flex items-center gap-3">
           <Filter size={20} className="text-terminal-accent" />
           <h2 className="font-semibold">Stock Screener</h2>
+          <span className="text-sm text-terminal-muted">({results.length} stocks)</span>
         </div>
         
         <div className="flex items-center gap-2">
@@ -144,11 +147,11 @@ export default function Screener() {
             <SlidersHorizontal size={16} />
             Filters
           </button>
-          <button className="flex items-center gap-2 px-3 py-1.5 bg-terminal-border rounded-lg text-sm">
+          <button className="flex items-center gap-2 px-3 py-1.5 bg-terminal-border rounded-lg text-sm hover:bg-terminal-border/80">
             <Save size={16} />
             Save
           </button>
-          <button className="flex items-center gap-2 px-3 py-1.5 bg-terminal-border rounded-lg text-sm">
+          <button className="flex items-center gap-2 px-3 py-1.5 bg-terminal-border rounded-lg text-sm hover:bg-terminal-border/80">
             <Download size={16} />
             Export
           </button>
@@ -181,98 +184,150 @@ export default function Screener() {
 
             {activeTab === 'templates' ? (
               <div className="space-y-2">
-                {templates.map((template, idx) => (
+                {templates.map((template) => (
                   <button
-                    key={idx}
+                    key={template.id}
                     onClick={() => applyTemplate(template)}
                     className="w-full text-left p-3 bg-terminal-bg rounded-lg hover:bg-terminal-border transition-colors"
                   >
-                    <div className="font-medium text-sm">{template.name}</div>
-                    <div className="text-xs text-terminal-muted mt-1">
-                      {Object.keys(template.filters).length} criteria
+                    <div className="flex items-center gap-2">
+                      <Star size={14} className="text-terminal-warning" />
+                      <span className="font-medium text-sm">{template.name}</span>
                     </div>
+                    <p className="text-xs text-terminal-muted mt-1">{template.description}</p>
                   </button>
                 ))}
               </div>
             ) : (
               <div className="space-y-4">
-                {filters.map((filter) => (
-                  <div key={filter.id} className="space-y-2">
-                    <label className="text-sm text-terminal-muted">{filter.label}</label>
-                    {filter.type === 'range' ? (
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          value={Array.isArray(filter.value) ? filter.value[0] : ''}
-                          onChange={(e) => updateFilter(filter.id, [Number(e.target.value), Array.isArray(filter.value) ? filter.value[1] : 0])}
-                          placeholder="Min"
-                          className="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded text-sm"
-                        />
-                        <input
-                          type="number"
-                          value={Array.isArray(filter.value) ? filter.value[1] : ''}
-                          onChange={(e) => updateFilter(filter.id, [Array.isArray(filter.value) ? filter.value[0] : 0, Number(e.target.value)])}
-                          placeholder="Max"
-                          className="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded text-sm"
-                        />
-                      </div>
-                    ) : (
-                      <input
-                        type="number"
-                        value={filter.value as number}
-                        onChange={(e) => updateFilter(filter.id, Number(e.target.value))}
-                        className="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded text-sm"
-                      />
-                    )}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Market Cap (Cr)</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      placeholder="Min"
+                      value={filters.market_cap_min || ''}
+                      onChange={(e) => setFilters({...filters, market_cap_min: e.target.value ? Number(e.target.value) : null})}
+                      className="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded text-sm"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Max"
+                      value={filters.market_cap_max || ''}
+                      onChange={(e) => setFilters({...filters, market_cap_max: e.target.value ? Number(e.target.value) : null})}
+                      className="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded text-sm"
+                    />
                   </div>
-                ))}
-                
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">P/E Ratio</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      placeholder="Min"
+                      value={filters.pe_min || ''}
+                      onChange={(e) => setFilters({...filters, pe_min: e.target.value ? Number(e.target.value) : null})}
+                      className="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded text-sm"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Max"
+                      value={filters.pe_max || ''}
+                      onChange={(e) => setFilters({...filters, pe_max: e.target.value ? Number(e.target.value) : null})}
+                      className="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">ROE (%)</label>
+                  <input
+                    type="number"
+                    placeholder="Minimum ROE"
+                    value={filters.roe_min || ''}
+                    onChange={(e) => setFilters({...filters, roe_min: e.target.value ? Number(e.target.value) : null})}
+                    className="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded text-sm"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Sector</label>
+                  <select
+                    value={filters.sector}
+                    onChange={(e) => setFilters({...filters, sector: e.target.value})}
+                    className="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded text-sm"
+                  >
+                    <option value="">All Sectors</option>
+                    <option value="Technology">Technology</option>
+                    <option value="Financial Services">Financial Services</option>
+                    <option value="Energy">Energy</option>
+                    <option value="Automobile">Automobile</option>
+                    <option value="Healthcare">Healthcare</option>
+                    <option value="FMCG">FMCG</option>
+                  </select>
+                </div>
+
                 <button
                   onClick={runScreener}
                   disabled={loading}
                   className="w-full py-2 bg-terminal-accent text-white rounded-lg hover:bg-terminal-accent/90 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {loading ? 'Running...' : (
+                  {loading ? 'Loading...' : (
                     <>
                       <Play size={16} />
-                      Run Screener
+                      Apply Filters
                     </>
                   )}
+                </button>
+
+                <button
+                  onClick={() => setFilters({
+                    market_cap_min: null,
+                    market_cap_max: null,
+                    pe_min: null,
+                    pe_max: null,
+                    roe_min: null,
+                    debt_equity_max: null,
+                    dividend_yield_min: null,
+                    sector: '',
+                  })}
+                  className="w-full py-2 bg-terminal-bg border border-terminal-border rounded-lg hover:bg-terminal-border text-sm"
+                >
+                  Clear Filters
                 </button>
               </div>
             )}
           </div>
         )}
 
-        {/* Results */}
+        {/* Results Table */}
         <div className="flex-1 overflow-auto">
           <div className="p-4">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-sm text-terminal-muted">
-                {results.length} stocks found
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-terminal-muted">Sort by:</span>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  className="px-3 py-1 bg-terminal-bg border border-terminal-border rounded text-sm"
-                >
-                  <option value="market_cap">Market Cap</option>
-                  <option value="price">Price</option>
-                  <option value="pct_change">Change %</option>
-                  <option value="volume">Volume</option>
-                  <option value="pe_ratio">P/E Ratio</option>
-                </select>
-                <button
-                  onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                  className="p-1 hover:bg-terminal-border rounded"
-                >
-                  <ArrowUpDown size={16} className={sortOrder === 'asc' ? 'rotate-180' : ''} />
-                </button>
-              </div>
+            {/* Sort Controls */}
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-sm text-terminal-muted">Sort by:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => { setSortBy(e.target.value); setTimeout(runScreener, 100) }}
+                className="px-3 py-1 bg-terminal-bg border border-terminal-border rounded text-sm"
+              >
+                <option value="market_cap">Market Cap</option>
+                <option value="price">Price</option>
+                <option value="pct_change">Change %</option>
+                <option value="volume">Volume</option>
+                <option value="pe_ratio">P/E Ratio</option>
+                <option value="roe">ROE</option>
+              </select>
+              <button
+                onClick={() => { setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc'); setTimeout(runScreener, 100) }}
+                className="p-1 hover:bg-terminal-border rounded"
+              >
+                <ArrowUpDown size={16} className={sortOrder === 'asc' ? 'rotate-180' : ''} />
+              </button>
             </div>
 
+            {/* Table */}
             <div className="bg-terminal-card rounded-xl border border-terminal-border overflow-hidden">
               <table className="w-full">
                 <thead className="bg-terminal-bg">
@@ -284,27 +339,35 @@ export default function Screener() {
                     <th className="p-3 font-medium">Mkt Cap</th>
                     <th className="p-3 font-medium">P/E</th>
                     <th className="p-3 font-medium">ROE</th>
+                    <th className="p-3 font-medium">D/E</th>
+                    <th className="p-3 font-medium">Sector</th>
                   </tr>
                 </thead>
                 <tbody>
                   {results.map((stock) => (
                     <tr
                       key={stock.symbol}
-                      onClick={() => window.location.href = `/quotes?symbol=${stock.symbol}`}
+                      onClick={() => window.location.href = `/charts?symbol=${stock.symbol}`}
                       className="border-t border-terminal-border cursor-pointer hover:bg-terminal-border transition-colors"
                     >
                       <td className="p-3">
                         <div className="font-medium">{stock.symbol}</div>
-                        <div className="text-xs text-terminal-muted truncate max-w-[150px]">{stock.name}</div>
+                        <div className="text-xs text-terminal-muted truncate max-w-[120px]">{stock.name}</div>
                       </td>
-                      <td className="p-3 font-mono">₹{(stock.price || 0).toFixed(2)}</td>
-                      <td className={`p-3 font-mono ${(stock.pct_change || 0) >= 0 ? 'text-terminal-success' : 'text-terminal-danger'}`}>
-                        {(stock.pct_change || 0) >= 0 ? '+' : ''}{(stock.pct_change || 0).toFixed(2)}%
+                      <td className="p-3 font-mono">₹{stock.price?.toLocaleString()}</td>
+                      <td className={`p-3 font-mono ${stock.pct_change >= 0 ? 'text-terminal-success' : 'text-terminal-danger'}`}>
+                        {stock.pct_change >= 0 ? '+' : ''}{stock.pct_change?.toFixed(2)}%
                       </td>
-                      <td className="p-3 font-mono text-sm">{(stock.volume / 1000000).toFixed(1)}M</td>
-                      <td className="p-3 font-mono text-sm">{(stock.market_cap / 10000000).toFixed(1)}L</td>
-                      <td className="p-3 font-mono text-sm">{(stock.pe_ratio || 0).toFixed(1)}</td>
-                      <td className="p-3 font-mono text-sm text-terminal-success">{(stock.roe || 0).toFixed(1)}%</td>
+                      <td className="p-3 font-mono text-sm">{formatVolume(stock.volume)}</td>
+                      <td className="p-3 font-mono text-sm">{formatMarketCap(stock.market_cap)}</td>
+                      <td className="p-3 font-mono text-sm">{stock.pe_ratio?.toFixed(1) || '-'}</td>
+                      <td className={`p-3 font-mono text-sm ${stock.roe >= 15 ? 'text-terminal-success' : ''}`}>
+                        {stock.roe?.toFixed(1) || '-'}%
+                      </td>
+                      <td className={`p-3 font-mono text-sm ${stock.debt_equity > 1 ? 'text-terminal-danger' : ''}`}>
+                        {stock.debt_equity?.toFixed(2) || '-'}
+                      </td>
+                      <td className="p-3 text-sm text-terminal-muted">{stock.sector}</td>
                     </tr>
                   ))}
                 </tbody>
