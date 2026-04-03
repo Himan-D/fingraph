@@ -73,11 +73,6 @@ async def test_webhook(webhook_id: str):
         "payload": test_payload,
         "message": f"Test webhook sent for {webhook_id}",
     }
-    return {
-        "success": True,
-        "payload": test_payload,
-        "message": f"Test webhook would be sent to {url}",
-    }
 
 
 # Background refresh tasks

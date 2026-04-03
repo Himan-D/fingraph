@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, func
+from sqlalchemy import select, desc, func, text
 from typing import List, Optional
 from datetime import datetime, timedelta
 import logging
-import random
 
 from db.postgres import get_db
 from db.postgres_models import Company, StockQuote, Fundamental
@@ -85,70 +84,45 @@ async def get_movers(
 @router.get("/sectors")
 async def get_sectors(db: AsyncSession = Depends(get_db)):
     """Get sector performance heatmap - calculates real change from stock data"""
-    result = await db.execute(
-        select(Company.sector, func.count(Company.id).label("count")).group_by(
-            Company.sector
+    # Single query: for each sector, get the latest quote per company using a
+    # DISTINCT ON sub-query then aggregate avg change% and total volume.
+    sector_sql = text(
+        """
+        WITH latest AS (
+            SELECT DISTINCT ON (sq.company_id)
+                sq.company_id,
+                sq.close,
+                sq.open,
+                sq.volume
+            FROM stock_quotes sq
+            ORDER BY sq.company_id, sq.timestamp DESC
         )
+        SELECT
+            c.sector                                        AS sector,
+            COUNT(c.id)                                     AS count,
+            AVG(
+                CASE WHEN l.open > 0
+                     THEN (l.close - l.open) / l.open * 100
+                     ELSE NULL END
+            )                                               AS avg_change,
+            COALESCE(SUM(l.volume), 0)                      AS total_volume
+        FROM companies c
+        LEFT JOIN latest l ON l.company_id = c.id
+        GROUP BY c.sector
+        ORDER BY avg_change DESC NULLS LAST
+        """
     )
-    sectors_data = result.all()
+    rows = (await db.execute(sector_sql)).mappings().all()
 
-    sectors = []
-    for s in sectors_data:
-        sector_name = s.sector or "Other"
-
-        companies_result = await db.execute(
-            select(Company).where(Company.sector == s.sector)
-        )
-        sector_companies = companies_result.scalars().all()
-
-        changes = []
-        for company in sector_companies:
-            quote_result = await db.execute(
-                select(StockQuote)
-                .where(StockQuote.company_id == company.id)
-                .order_by(desc(StockQuote.timestamp))
-                .limit(2)
-            )
-            quotes = quote_result.scalars().all()
-
-            if len(quotes) >= 2:
-                current = quotes[0]
-                previous = quotes[1]
-                if previous.close and previous.close > 0:
-                    pct_change = (
-                        (current.close - previous.close) / previous.close
-                    ) * 100
-                    changes.append(pct_change)
-
-        avg_change = sum(changes) / len(changes) if changes else random.uniform(-2, 2)
-        total_volume = sum(
-            q.volume or 0
-            for q in [
-                (
-                    await db.execute(
-                        select(StockQuote)
-                        .where(StockQuote.company_id == company.id)
-                        .order_by(desc(StockQuote.timestamp))
-                        .limit(1)
-                    )
-                )
-                .scalars()
-                .first()
-                for company in sector_companies
-            ]
-            if q
-        )
-
-        sectors.append(
-            {
-                "sector": sector_name,
-                "change": round(avg_change, 2),
-                "volume": int(total_volume),
-                "count": s.count,
-            }
-        )
-
-    sectors = sorted(sectors, key=lambda x: x["change"], reverse=True)
+    sectors = [
+        {
+            "sector": (row["sector"] or "Other"),
+            "change": round(float(row["avg_change"]), 2) if row["avg_change"] is not None else 0.0,
+            "volume": int(row["total_volume"]),
+            "count": int(row["count"]),
+        }
+        for row in rows
+    ]
     return {"success": True, "data": sectors}
 
 

@@ -1,9 +1,27 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
+from neo4j import GraphDatabase
 from core.services.graph_service import get_graph_service
+from config import settings
+from scripts.enrich_articles_finance_relations import (
+    SCRIPT_NAME,
+    run_enrichment,
+)
 
 router = APIRouter()
+
+
+def _get_neo4j_username() -> str:
+    return settings.NEO4J_USERNAME or settings.NEO4J_USER
+
+
+class EnrichmentRunRequest(BaseModel):
+    limit: Optional[int] = None
+    min_company_score: float = 4.0
+    min_sector_score: float = 4.0
+    concurrency: int = 6
+    dry_run: bool = False
 
 
 @router.get("/company/{symbol}")
@@ -157,3 +175,76 @@ async def query_graph(cypher: str):
         "success": False,
         "error": "Custom Cypher queries require Neo4j configuration",
     }
+
+
+@router.post("/enrichment/run")
+async def run_article_finance_enrichment(request: EnrichmentRunRequest):
+    """Run article content enrichment to create company/sector relationships."""
+    try:
+        result = await run_enrichment(
+            limit=request.limit,
+            min_company_score=request.min_company_score,
+            min_sector_score=request.min_sector_score,
+            concurrency=request.concurrency,
+            dry_run=request.dry_run,
+        )
+        return {"success": True, "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Enrichment failed: {e}")
+
+
+@router.get("/enrichment/status")
+async def get_article_finance_enrichment_status(limit: int = 10):
+    """Get current enrichment relationship counts and sample matches."""
+    if not settings.NEO4J_URI or not settings.NEO4J_PASSWORD or not _get_neo4j_username():
+        raise HTTPException(status_code=503, detail="Neo4j is not configured")
+
+    driver = GraphDatabase.driver(
+        settings.NEO4J_URI,
+        auth=(_get_neo4j_username(), settings.NEO4J_PASSWORD),
+    )
+    try:
+        with driver.session(database=settings.NEO4J_DATABASE) as session:
+            rel_counts = session.run(
+                """
+                MATCH ()-[r]->()
+                WHERE type(r) IN ['AFFECTS_COMPANY', 'RELEVANT_TO_SECTOR']
+                  AND r.created_by = $created_by
+                RETURN type(r) AS type, count(r) AS count
+                ORDER BY type(r)
+                """,
+                created_by=SCRIPT_NAME,
+            ).data()
+
+            examples = session.run(
+                """
+                MATCH (a:Article)-[r]->(n)
+                WHERE type(r) IN ['AFFECTS_COMPANY', 'RELEVANT_TO_SECTOR']
+                  AND r.created_by = $created_by
+                RETURN a.graphml_id AS article_id,
+                       a.title AS title,
+                       type(r) AS rel_type,
+                       labels(n) AS target_labels,
+                       coalesce(n.symbol, n.name, n.display_name) AS target,
+                       r.score AS score,
+                       r.match_reason AS match_reason,
+                       r.source_url AS source_url
+                ORDER BY r.score DESC, article_id, rel_type
+                LIMIT $limit
+                """,
+                created_by=SCRIPT_NAME,
+                limit=limit,
+            ).data()
+
+        return {
+            "success": True,
+            "data": {
+                "created_by": SCRIPT_NAME,
+                "relationship_counts": rel_counts,
+                "examples": examples,
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch enrichment status: {e}")
+    finally:
+        driver.close()

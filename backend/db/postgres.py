@@ -40,11 +40,15 @@ async def init_db():
 
 
 async def get_db():
-    """Get database session"""
+    """Read-write session — caller is responsible for adding/flushing objects.
+    The session auto-commits only when the route actually modified state
+    (i.e. session.in_transaction() is True after the route returns)."""
     async with AsyncSessionLocal() as session:
         try:
             yield session
-            await session.commit()
+            # Only commit if the route dirtied the session
+            if session.in_transaction():
+                await session.commit()
         except Exception:
             await session.rollback()
             raise

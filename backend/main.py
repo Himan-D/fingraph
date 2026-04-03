@@ -22,6 +22,9 @@ from db.redis_client import init_redis, close_redis
 from core.services.truedata_service import TrueDataService
 from core.background_tasks import build_knowledge_graph, scrape_and_store_news
 from core.scheduler import start_scheduler, stop_scheduler
+from middleware.logging_middleware import RequestLoggingMiddleware
+from middleware.error_handler import ErrorHandlerMiddleware
+from middleware.rate_limiter import RateLimitMiddleware
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -77,6 +80,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Middleware — order matters: outermost runs first
+# ErrorHandler must wrap everything so it catches errors from other middleware too
+app.add_middleware(ErrorHandlerMiddleware)
+app.add_middleware(RateLimitMiddleware, window=60, max_requests=120)
+app.add_middleware(RequestLoggingMiddleware)
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
@@ -120,4 +129,28 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy"}
+    """Dependency health check — used by Docker / load-balancer probes."""
+    status: dict = {"status": "ok", "services": {}}
+
+    # PostgreSQL
+    try:
+        from db.postgres import engine
+        from sqlalchemy import text
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        status["services"]["postgres"] = "ok"
+    except Exception as e:
+        status["services"]["postgres"] = f"error: {e}"
+        status["status"] = "degraded"
+
+    # Redis
+    try:
+        from db.redis_client import get_redis
+        redis = await get_redis()
+        await redis.ping()
+        status["services"]["redis"] = "ok"
+    except Exception as e:
+        status["services"]["redis"] = f"error: {e}"
+        status["status"] = "degraded"
+
+    return status

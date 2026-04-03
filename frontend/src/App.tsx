@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom'
-import { Search, Bell, Settings, Menu, X, LayoutDashboard, TrendingUp, Filter, Share2, LineChart, MessageSquare, Plus, Star, TrendingDown, TrendingUpIcon, Activity, RefreshCw, Wifi, WifiOff, Moon, Sun, ArrowRight } from 'lucide-react'
+import { Search, Bell, Settings, Menu, X, LayoutDashboard, TrendingUp, Filter, Share2, LineChart, MessageSquare, Plus, Star, TrendingDown, TrendingUpIcon, Activity, RefreshCw, Wifi, WifiOff, Moon, Sun, ArrowRight, Layers } from 'lucide-react'
 import Dashboard from './components/Dashboard/Dashboard'
 import QuoteBoard from './components/Dashboard/QuoteBoard'
 import Quotes from './components/Quotes/Quotes'
@@ -9,6 +9,7 @@ import GraphExplorer from './components/Graph/GraphExplorer'
 import AIChat from './components/AIChat/AIChat'
 import Screener from './components/Screener/Screener'
 import News from './components/News/News'
+import OptionChain from './components/OptionChain/OptionChain'
 import axios from 'axios'
 
 interface Notification {
@@ -53,6 +54,7 @@ function AppContent() {
     { id: 'screener', label: 'Screener', icon: <Filter size={18} />, path: '/screener' },
     { id: 'graph', label: 'Knowledge Graph', icon: <Share2 size={18} />, path: '/graph' },
     { id: 'charts', label: 'Charts', icon: <LineChart size={18} />, path: '/charts' },
+    { id: 'options', label: 'Option Chain', icon: <Layers size={18} />, path: '/options' },
     { id: 'news', label: 'News', icon: <Bell size={18} />, path: '/news' },
     { id: 'ai', label: 'AI Assistant', icon: <MessageSquare size={18} />, path: '/ai' },
   ]
@@ -73,7 +75,6 @@ function AppContent() {
   useEffect(() => {
     fetchNotifications()
     fetchMarketStatus()
-    fetchTrending()
     fetchTrending()
     
     if (autoRefresh) {
@@ -423,6 +424,7 @@ function AppContent() {
               <Route path="/screener" element={<Screener />} />
               <Route path="/graph" element={<GraphExplorer />} />
               <Route path="/charts" element={<Charts />} />
+              <Route path="/options" element={<OptionChain />} />
               <Route path="/news" element={<News />} />
               <Route path="/ai" element={<AIChat />} />
             </Routes>

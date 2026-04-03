@@ -14,6 +14,50 @@ class SebiScraper:
 
     CRAWL4AI_URL = getattr(settings, "CRAWL4AI_URL", "http://localhost:11202")
     BASE_URL = "https://www.sebi.gov.in"
+    RSS_URL = "https://www.sebi.gov.in/sebirss.xml"
+
+    async def _fetch_sebi_rss(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """Fetch SEBI announcements from official RSS feed."""
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Accept": "application/rss+xml, application/xml, text/xml",
+            }
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    self.RSS_URL,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=20),
+                ) as resp:
+                    if resp.status != 200:
+                        return []
+                    body = await resp.text()
+
+            soup = BeautifulSoup(body, "xml")
+            items = soup.find_all("item")
+            rows: List[Dict[str, Any]] = []
+            for item in items[:limit]:
+                title = item.find("title")
+                link = item.find("link")
+                desc = item.find("description")
+                pub = item.find("pubDate")
+                if title:
+                    rows.append(
+                        {
+                            "title": title.get_text(strip=True),
+                            "url": link.get_text(strip=True) if link else self.BASE_URL,
+                            "source": "SEBI",
+                            "category": "regulatory",
+                            "summary": desc.get_text(strip=True) if desc else "",
+                            "published_at": pub.get_text(strip=True)
+                            if pub
+                            else datetime.now().isoformat(),
+                        }
+                    )
+            return rows
+        except Exception as e:
+            logger.debug(f"SEBI RSS fetch failed: {e}")
+            return []
 
     async def _crawl_with_crawl4ai(self, url: str) -> str:
         """Use crawl4ai API to crawl page"""
@@ -75,10 +119,15 @@ class SebiScraper:
 
     async def get_latest_filings(self, limit: int = 20) -> List[Dict]:
         """Get latest SEBI filings"""
+        # Prefer official RSS feed (stable + structured)
+        rss_rows = await self._fetch_sebi_rss(limit=limit)
+        if rss_rows:
+            return rss_rows
+
         filings = []
 
         # Try crawl4ai
-        content = await self._crawl_with_crawl4ai(f"{self.BASE_URL}/sebiweb/home/0")
+        content = await self._crawl_with_crawl4ai(f"{self.BASE_URL}")
         if content:
             lines = content.split("\n")
             for line in lines:
@@ -97,7 +146,7 @@ class SebiScraper:
 
         # Fallback to BS
         return await self._scrape_with_bs(
-            f"{self.BASE_URL}/sebiweb/home/0",
+            f"{self.BASE_URL}",
             ["h1", "h2", "h3", "a[href*='order']", "a[href*='circular']"],
         )
 
@@ -107,7 +156,7 @@ class SebiScraper:
 
         # Try crawl4ai
         content = await self._crawl_with_crawl4ai(
-            f"{self.BASE_URL}/sebiweb/codifiedCirculars.do"
+            f"{self.BASE_URL}/legal/circulars.html"
         )
         if content:
             lines = content.split("\n")
@@ -130,7 +179,7 @@ class SebiScraper:
     async def get_orders(self) -> List[Dict]:
         """Get SEBI orders"""
         content = await self._crawl_with_crawl4ai(
-            f"{self.BASE_URL}/sebiweb/order/list.do"
+            f"{self.BASE_URL}/enforcement/orders.html"
         )
         if content:
             lines = content.split("\n")
@@ -146,7 +195,7 @@ class SebiScraper:
             ]
 
         return await self._scrape_with_bs(
-            f"{self.BASE_URL}/sebiweb/order/list.do", ["h1", "h2", "a"]
+            f"{self.BASE_URL}/enforcement/orders.html", ["h1", "h2", "a"]
         )
 
 

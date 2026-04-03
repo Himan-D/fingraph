@@ -75,9 +75,8 @@ async def scrape_sebi_filings():
                     source="SEBI",
                     url=item.get("url", ""),
                     published_at=datetime.now(),
-                    sentiment="neutral",
+                    sentiment="regulatory",
                     related_symbols=[],
-                    category="regulatory",
                 )
                 session.add(news)
 

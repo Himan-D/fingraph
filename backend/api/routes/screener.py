@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List
-import random
 
 router = APIRouter()
 
@@ -27,53 +26,78 @@ class ScreenerFilters(BaseModel):
 
 
 async def get_stocks_from_db():
-    """Get all stocks from database"""
+    """Get all stocks from database, joining Fundamental table for real ratios."""
     from db.postgres import AsyncSessionLocal
-    from db.postgres_models import Company, StockQuote
-    from sqlalchemy import select, func, desc
+    from db.postgres_models import Company, StockQuote, Fundamental
+    from sqlalchemy import select, func, desc, outerjoin
 
     async with AsyncSessionLocal() as session:
+        # Latest quote per company via sub-query
+        latest_quote_sq = (
+            select(
+                StockQuote.company_id,
+                func.max(StockQuote.timestamp).label("max_ts"),
+            )
+            .group_by(StockQuote.company_id)
+            .subquery()
+        )
+
         result = await session.execute(
             select(
+                Company.id,
                 Company.symbol,
                 Company.name,
                 Company.sector,
                 Company.industry,
                 Company.market_cap,
-                func.max(StockQuote.close).label("price"),
-                func.max(StockQuote.volume).label("volume"),
+                StockQuote.close.label("price"),
+                StockQuote.open.label("open_price"),
+                StockQuote.volume,
+                StockQuote.high.label("week52_high"),
+                StockQuote.low.label("week52_low"),
+                Fundamental.pe_ratio,
+                Fundamental.pb_ratio,
+                Fundamental.roe,
+                Fundamental.roce,
+                Fundamental.debt_to_equity,
+                Fundamental.dividend_yield,
             )
-            .join(StockQuote, Company.id == StockQuote.company_id)
-            .group_by(Company.id)
-            .order_by(desc(func.max(StockQuote.volume)))
+            .join(latest_quote_sq, Company.id == latest_quote_sq.c.company_id, isouter=True)
+            .join(
+                StockQuote,
+                (StockQuote.company_id == Company.id)
+                & (StockQuote.timestamp == latest_quote_sq.c.max_ts),
+                isouter=True,
+            )
+            .join(Fundamental, Fundamental.company_id == Company.id, isouter=True)
+            .order_by(desc(Company.market_cap))
             .limit(200)
         )
 
         stocks = []
-        for row in result:
-            price = float(row.price) if row.price else 0
-            change = price * random.uniform(-0.05, 0.05)
-            pct_change = (change / price) * 100 if price else 0
-
-            sector_name = row.sector or "Other"
+        for row in result.mappings():
+            price = float(row.price) if row.price else 0.0
+            open_price = float(row.open_price) if row.open_price else price
+            change = round(price - open_price, 2)
+            pct_change = round((change / open_price) * 100, 2) if open_price else 0.0
 
             stocks.append(
                 {
                     "symbol": row.symbol,
                     "name": row.name or row.symbol,
-                    "sector": sector_name,
+                    "sector": row.sector or "Other",
                     "industry": row.industry or "",
                     "price": round(price, 2),
-                    "change": round(change, 2),
-                    "pct_change": round(pct_change, 2),
-                    "volume": row.volume or 0,
-                    "market_cap": float(row.market_cap) if row.market_cap else 0,
-                    "pe_ratio": round(random.uniform(10, 50), 2),
-                    "roe": round(random.uniform(5, 35), 2),
-                    "debt_equity": round(random.uniform(0.1, 2.5), 2),
-                    "dividend_yield": round(random.uniform(0.5, 4), 2),
-                    "week52_high": round(price * 1.2, 2),
-                    "week52_low": round(price * 0.7, 2),
+                    "change": change,
+                    "pct_change": pct_change,
+                    "volume": int(row.volume) if row.volume else 0,
+                    "market_cap": float(row.market_cap) if row.market_cap else 0.0,
+                    "pe_ratio": float(row.pe_ratio) if row.pe_ratio is not None else None,
+                    "roe": float(row.roe) if row.roe is not None else None,
+                    "debt_equity": float(row.debt_to_equity) if row.debt_to_equity is not None else None,
+                    "dividend_yield": float(row.dividend_yield) if row.dividend_yield is not None else None,
+                    "week52_high": float(row.week52_high) if row.week52_high else None,
+                    "week52_low": float(row.week52_low) if row.week52_low else None,
                 }
             )
         return stocks
@@ -110,20 +134,20 @@ async def run_screener(filters: ScreenerFilters = None):
                     s for s in stocks if s["market_cap"] <= filters.market_cap_max
                 ]
             if filters.pe_min is not None:
-                stocks = [s for s in stocks if s["pe_ratio"] >= filters.pe_min]
+                stocks = [s for s in stocks if s["pe_ratio"] is not None and s["pe_ratio"] >= filters.pe_min]
             if filters.pe_max is not None:
-                stocks = [s for s in stocks if s["pe_ratio"] <= filters.pe_max]
+                stocks = [s for s in stocks if s["pe_ratio"] is not None and s["pe_ratio"] <= filters.pe_max]
             if filters.roe_min is not None:
-                stocks = [s for s in stocks if s["roe"] >= filters.roe_min]
+                stocks = [s for s in stocks if s["roe"] is not None and s["roe"] >= filters.roe_min]
             if filters.debt_equity_max is not None:
                 stocks = [
-                    s for s in stocks if s["debt_equity"] <= filters.debt_equity_max
+                    s for s in stocks if s["debt_equity"] is not None and s["debt_equity"] <= filters.debt_equity_max
                 ]
             if filters.dividend_yield_min is not None:
                 stocks = [
                     s
                     for s in stocks
-                    if s["dividend_yield"] >= filters.dividend_yield_min
+                    if s["dividend_yield"] is not None and s["dividend_yield"] >= filters.dividend_yield_min
                 ]
             if filters.sector:
                 stocks = [

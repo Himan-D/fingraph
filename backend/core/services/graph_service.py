@@ -9,6 +9,23 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
+
+def _get_neo4j_username() -> str:
+    return settings.NEO4J_USERNAME or settings.NEO4J_USER
+
+
+def _node_identifier(properties: Dict[str, Any]) -> str:
+    return (
+        str(
+            properties.get("graphml_id")
+            or properties.get("symbol")
+            or properties.get("name")
+            or properties.get("title")
+            or properties.get("canonical_name")
+            or ""
+        )
+    )
+
 # Sample knowledge graph data for visualization
 SAMPLE_GRAPH_DATA = {
     "companies": {
@@ -216,7 +233,7 @@ class Neo4jGraph:
             if settings.NEO4J_URI and settings.NEO4J_PASSWORD:
                 self.driver = GraphDatabase.driver(
                     settings.NEO4J_URI,
-                    auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD),
+                    auth=(_get_neo4j_username(), settings.NEO4J_PASSWORD),
                 )
                 logger.info("Connected to Neo4j")
             else:
@@ -273,29 +290,29 @@ class Neo4jGraph:
             logger.warning(f"Failed to add sector {sector}: {e}")
             return False
 
+    # Allowed relationship types — validated to prevent Cypher injection
+    _ALLOWED_REL_TYPES = frozenset(
+        {
+            "COMPETITOR",
+            "BELONGS_TO_SECTOR",
+            "SUPPLIER_OF",
+            "CUSTOMER_OF",
+            "SUBSIDIARY_OF",
+            "PARTNER_OF",
+            "PROMOTER_OF",
+        }
+    )
+
     def add_relationship(self, from_symbol: str, to_symbol: str, rel_type: str):
         """Add relationship between companies"""
         if not self.driver:
             return False
-        try:
-            with self.driver.session() as session:
-                session.run(
-                    """
-                    MATCH (a:Company {symbol: $from_symbol})
-                    MATCH (b:Company {symbol: $to_symbol})
-                    MERGE (a)-[r:COMPETITOR]->(b)
-                    """,
-                    from_symbol=from_symbol,
-                    to_symbol=to_symbol,
-                )
-                return True
-        except Exception as e:
-            logger.warning(
-                f"Failed to add relationship {from_symbol}->{to_symbol}: {e}"
-            )
+        if rel_type not in self._ALLOWED_REL_TYPES:
+            logger.warning(f"Rejected unknown relationship type: {rel_type!r}")
             return False
         try:
             with self.driver.session() as session:
+                # rel_type is validated against an allowlist above — safe to interpolate
                 session.run(
                     f"""
                     MATCH (a:Company {{symbol: $from_symbol}})
@@ -304,23 +321,6 @@ class Neo4jGraph:
                     """,
                     from_symbol=from_symbol,
                     to_symbol=to_symbol,
-                )
-                return True
-        except Exception as e:
-            logger.warning(
-                f"Failed to add relationship {from_symbol}->{to_symbol}: {e}"
-            )
-            return False
-        try:
-            with self.driver.session() as session:
-                session.run(
-                    f"""
-                    MATCH (a:Company {{symbol: $from}})
-                    MATCH (b:Company {{symbol: $to}})
-                    MERGE (a)-[r:{rel_type}]->(b)
-                    """,
-                    from_=from_symbol,
-                    to=to_symbol,
                 )
                 return True
         except Exception as e:
@@ -621,57 +621,49 @@ class Neo4jGraph:
         if self.driver:
             try:
                 with self.driver.session() as session:
-                    # Get all companies
-                    result = session.run("""
-                        MATCH (c:Company)
-                        RETURN c.symbol as symbol, c.name as name, c.sector as sector, 
-                               c.industry as industry, c.market_cap as market_cap
-                        LIMIT 100
-                    """)
+                    result = session.run(
+                        """
+                        MATCH (n:Entity)
+                        WITH n, [label IN labels(n) WHERE label <> 'Entity'] AS node_labels
+                        WHERE size(node_labels) > 0
+                        RETURN properties(n) AS props, node_labels[0] AS primary_label
+                        LIMIT 300
+                        """
+                    )
                     for record in result:
+                        props = record.get("props", {})
+                        node_id = _node_identifier(props)
+                        if not node_id:
+                            continue
                         nodes.append(
                             {
-                                "id": record["symbol"],
-                                "label": "Company",
-                                "data": {
-                                    "name": record.get("name", record["symbol"]),
-                                    "sector": record.get("sector", ""),
-                                    "industry": record.get("industry", ""),
-                                    "market_cap": record.get("market_cap", 0),
-                                },
+                                "id": node_id,
+                                "label": record.get("primary_label", "Entity"),
+                                "data": props,
                             }
                         )
 
-                    # Get all sectors
-                    result = session.run("""
-                        MATCH (s:Sector)
-                        RETURN s.name as name
-                    """)
+                    result = session.run(
+                        """
+                        MATCH (a:Entity)-[r]->(b:Entity)
+                        WITH a, b, r,
+                             [label IN labels(a) WHERE label <> 'Entity'] AS from_labels,
+                             [label IN labels(b) WHERE label <> 'Entity'] AS to_labels
+                        WHERE size(from_labels) > 0 AND size(to_labels) > 0
+                        RETURN properties(a) AS from_props,
+                               properties(b) AS to_props,
+                               type(r) AS rel_type
+                        LIMIT 1000
+                        """
+                    )
                     for record in result:
-                        sector_name = record["name"]
-                        if not any(n["id"] == sector_name for n in nodes):
-                            nodes.append(
-                                {
-                                    "id": sector_name,
-                                    "label": "Sector",
-                                    "data": {"name": sector_name},
-                                }
-                            )
-
-                    # Get all relationships
-                    result = session.run("""
-                        MATCH (a)-[r]->(b)
-                        RETURN a.symbol as from_symbol, b.symbol as to_symbol, 
-                               type(r) as rel_type
-                    """)
-                    for record in result:
-                        from_sym = record.get("from_symbol")
-                        to_sym = record.get("to_symbol")
-                        if from_sym and to_sym:
+                        from_id = _node_identifier(record.get("from_props", {}))
+                        to_id = _node_identifier(record.get("to_props", {}))
+                        if from_id and to_id:
                             edges.append(
                                 {
-                                    "from": from_sym,
-                                    "to": to_sym,
+                                    "from": from_id,
+                                    "to": to_id,
                                     "type": record.get("rel_type", "RELATED"),
                                     "label": record.get("rel_type", "RELATED"),
                                 }
@@ -720,6 +712,41 @@ class Neo4jGraph:
         """Search entities"""
         results = []
         query = query.upper()
+
+        if self.driver:
+            try:
+                with self.driver.session() as session:
+                    neo4j_results = session.run(
+                        """
+                        MATCH (n:Entity)
+                        WITH n,
+                             [label IN labels(n) WHERE label <> 'Entity'] AS node_labels,
+                             coalesce(
+                                 n.display_name,
+                                 n.name,
+                                 n.title,
+                                 n.symbol,
+                                 n.canonical_name,
+                                 ''
+                             ) AS search_name
+                        WHERE size(node_labels) > 0 AND toUpper(search_name) CONTAINS $query
+                        RETURN properties(n) AS props, node_labels[0] AS primary_label
+                        LIMIT 20
+                        """,
+                        query=query,
+                    ).data()
+
+                if neo4j_results:
+                    return [
+                        {
+                            "type": record["primary_label"].lower(),
+                            "id": _node_identifier(record["props"]),
+                            "data": record["props"],
+                        }
+                        for record in neo4j_results
+                    ]
+            except Exception as e:
+                logger.warning(f"Failed to search Neo4j entities: {e}")
 
         # Search companies
         for symbol, data in SAMPLE_GRAPH_DATA["companies"].items():

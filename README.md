@@ -117,6 +117,8 @@ fingraph/
 ### Knowledge Graph
 - `GET /api/v1/graph/company/{symbol}` - Company relationships
 - `GET /api/v1/graph/promoter/{name}` - Promoter network
+- `POST /api/v1/graph/enrichment/run` - Run article-to-finance enrichment
+- `GET /api/v1/graph/enrichment/status` - View enrichment relationship counts and samples
 
 ### AI
 - `POST /api/v1/ai/query` - Natural language query
@@ -125,6 +127,35 @@ fingraph/
 ## Environment Variables
 
 See `backend/.env.example` for all configuration options.
+
+## India Finance Enrichment Workflow
+
+This project supports content-based graph enrichment for Indian finance news.
+
+### CLI run
+
+```bash
+cd backend
+./.venv311/bin/python scripts/enrich_articles_finance_relations.py --limit 50
+```
+
+### API run (non-blocking clients can trigger from UI/backend job)
+
+```bash
+curl -X POST http://localhost:8000/api/v1/graph/enrichment/run \
+	-H "Content-Type: application/json" \
+	-d '{"limit": 50, "min_company_score": 4.0, "min_sector_score": 4.0, "concurrency": 6, "dry_run": false}'
+```
+
+### Verify relationships
+
+```bash
+curl "http://localhost:8000/api/v1/graph/enrichment/status?limit=20"
+```
+
+Relationship types created by enrichment:
+- `AFFECTS_COMPANY`
+- `RELEVANT_TO_SECTOR`
 
 ## License
 

@@ -1,6 +1,23 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: fingraph-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: fingraph
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fingraph"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     container_name: fingraph-redis
@@ -24,5 +41,6 @@ services:
       - qdrant_data:/qdrant/storage
 
 volumes:
+  postgres_data:
   redis_data:
   qdrant_data:

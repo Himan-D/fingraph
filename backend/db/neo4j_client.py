@@ -5,11 +5,15 @@ from typing import Optional
 driver = None
 
 
+def _get_neo4j_username() -> str:
+    return settings.NEO4J_USERNAME or settings.NEO4J_USER
+
+
 async def init_neo4j():
     global driver
     driver = AsyncGraphDatabase.driver(
         settings.NEO4J_URI,
-        auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD),
+        auth=(_get_neo4j_username(), settings.NEO4J_PASSWORD),
         max_connection_lifetime=3600,
         max_connection_pool_size=50,
     )

@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from typing import Optional, List
 from datetime import datetime
-import random
 
 router = APIRouter()
 
@@ -178,8 +177,42 @@ async def get_company(symbol: str):
 
 @router.get("/fundamentals/{symbol}")
 async def get_fundamentals(symbol: str):
-    """Get financial ratios and metrics"""
+    """Get financial ratios and metrics — DB first, SAMPLE_FUNDAMENTALS fallback"""
     symbol = symbol.upper()
+
+    # Try DB first
+    try:
+        from db.postgres import AsyncSessionLocal
+        from db.postgres_models import Fundamental, Company
+        from sqlalchemy import select
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Fundamental)
+                .join(Company, Company.id == Fundamental.company_id)
+                .where(Company.symbol == symbol)
+                .limit(1)
+            )
+            fund = result.scalars().first()
+            if fund:
+                return {
+                    "success": True,
+                    "data": {
+                        "symbol": symbol,
+                        "pe": fund.pe_ratio,
+                        "pb": fund.pb_ratio,
+                        "roe": fund.roe,
+                        "roce": fund.roce,
+                        "debt_equity": fund.debt_to_equity,
+                        "dividend_yield": fund.dividend_yield,
+                        "eps": fund.eps,
+                        "book_value": fund.book_value,
+                        "market_cap": fund.market_cap,
+                    },
+                    "source": "db",
+                }
+    except Exception:
+        pass
 
     if symbol in SAMPLE_FUNDAMENTALS:
         data = SAMPLE_FUNDAMENTALS[symbol]
@@ -197,23 +230,25 @@ async def get_fundamentals(symbol: str):
                 "book_value": data.get("book_value"),
                 "market_cap": data.get("market_cap"),
             },
+            "source": "sample",
         }
 
-    # Generate placeholder
+    # Unknown symbol — return nulls, not fake randoms
     return {
         "success": True,
         "data": {
             "symbol": symbol,
-            "pe": round(random.uniform(10, 40), 2),
-            "pb": round(random.uniform(1, 10), 2),
-            "roe": round(random.uniform(5, 30), 2),
-            "roce": round(random.uniform(8, 35), 2),
-            "debt_equity": round(random.uniform(0, 1.5), 2),
-            "dividend_yield": round(random.uniform(0, 3), 2),
-            "eps": round(random.uniform(10, 100), 2),
-            "book_value": round(random.uniform(50, 500), 2),
-            "market_cap": round(random.uniform(10000, 500000), 2),
+            "pe": None,
+            "pb": None,
+            "roe": None,
+            "roce": None,
+            "debt_equity": None,
+            "dividend_yield": None,
+            "eps": None,
+            "book_value": None,
+            "market_cap": None,
         },
+        "source": "unavailable",
     }
 
 
@@ -223,16 +258,9 @@ async def get_quarterly(symbol: str, limit: int = 8):
     symbol = symbol.upper()
 
     quarters = [
-        "Q3 2025",
-        "Q2 2025",
-        "Q1 2025",
-        "Q4 2024",
-        "Q3 2024",
-        "Q2 2024",
-        "Q1 2024",
-        "Q4 2023",
+        "Q3 2025", "Q2 2025", "Q1 2025", "Q4 2024",
+        "Q3 2024", "Q2 2024", "Q1 2024", "Q4 2023",
     ]
-    results = []
 
     base_revenue = 100000
     base_profit = 10000
@@ -241,19 +269,23 @@ async def get_quarterly(symbol: str, limit: int = 8):
         base_revenue = SAMPLE_FUNDAMENTALS[symbol].get("revenue", 100000) / 4
         base_profit = SAMPLE_FUNDAMENTALS[symbol].get("profit", 10000) / 4
 
+    # Deterministic seasonal variation by quarter index (no random)
+    seasonal = [1.05, 0.98, 1.02, 1.08, 1.03, 0.97, 1.01, 1.06]
+    results = []
     for i, quarter in enumerate(quarters[:limit]):
-        growth = 1 - i * 0.05  # Decreasing growth
-        results.append(
-            {
-                "quarter": quarter,
-                "revenue": round(base_revenue * growth * random.uniform(0.9, 1.1), 2),
-                "profit": round(base_profit * growth * random.uniform(0.85, 1.15), 2),
-                "eps": round(
-                    (base_profit * growth) / 100 * random.uniform(0.9, 1.1), 2
-                ),
-                "growth": round(random.uniform(-5, 15), 2) if i > 0 else 0,
-            }
-        )
+        factor = seasonal[i % len(seasonal)]
+        growth_factor = max(1 - i * 0.03, 0.70)  # monotonically declining historical
+        revenue = round(base_revenue * growth_factor * factor, 2)
+        profit = round(base_profit * growth_factor * factor, 2)
+        eps = round(profit / 100, 2)
+        growth = round((factor - 1) * 100, 2) if i > 0 else 0.0
+        results.append({
+            "quarter": quarter,
+            "revenue": revenue,
+            "profit": profit,
+            "eps": eps,
+            "growth": growth,
+        })
 
     return {"success": True, "data": results}
 
@@ -265,105 +297,70 @@ async def get_shareholding(symbol: str, limit: int = 4):
 
     if symbol in SAMPLE_FUNDAMENTALS:
         data = SAMPLE_FUNDAMENTALS[symbol]
-        promoter = data.get("promoter_holding", 50)
-        fii = data.get("fii_holding", 20)
-        dii = data.get("dii_holding", 15)
+        promoter = data.get("promoter_holding", 50.0)
+        fii = data.get("fii_holding", 20.0)
+        dii = data.get("dii_holding", 15.0)
     else:
-        promoter = random.uniform(30, 75)
-        fii = random.uniform(10, 40)
-        dii = random.uniform(10, 25)
+        promoter, fii, dii = 50.0, 20.0, 15.0
 
-    public = 100 - promoter - fii - dii
+    public = round(max(100.0 - promoter - fii - dii, 0.0), 2)
 
-    results = [
-        {
-            "quarter": "Q3 2025",
-            "promoter": promoter,
-            "fii": fii,
-            "dii": dii,
-            "public": public,
-        },
-        {
-            "quarter": "Q2 2025",
-            "promoter": promoter + random.uniform(-0.5, 0.5),
-            "fii": fii + random.uniform(-1, 1),
-            "dii": dii + random.uniform(-0.5, 0.5),
-            "public": public,
-        },
-        {
-            "quarter": "Q1 2025",
-            "promoter": promoter + random.uniform(-1, 1),
-            "fii": fii + random.uniform(-2, 2),
-            "dii": dii + random.uniform(-1, 1),
-            "public": public,
-        },
-        {
-            "quarter": "Q4 2024",
-            "promoter": promoter + random.uniform(-1.5, 1.5),
-            "fii": fii + random.uniform(-3, 3),
-            "dii": dii + random.uniform(-1.5, 1.5),
-            "public": public,
-        },
-    ]
+    # Deterministic small quarterly shifts — no random
+    deltas = [(0, 0, 0), (-0.3, 0.5, -0.2), (-0.6, 1.1, -0.4), (-1.0, 1.8, -0.7)]
+    quarter_labels = ["Q3 2025", "Q2 2025", "Q1 2025", "Q4 2024"]
 
-    return {"success": True, "data": results[:limit]}
+    results = []
+    for i, (dp, df, dd) in enumerate(deltas[:limit]):
+        results.append({
+            "quarter": quarter_labels[i],
+            "promoter": round(promoter + dp, 2),
+            "fii": round(fii + df, 2),
+            "dii": round(dii + dd, 2),
+            "public": round(public - dp - df - dd, 2),
+        })
+
+    return {"success": True, "data": results}
 
 
 @router.get("/deals/{symbol}")
 async def get_deals(symbol: str):
-    """Get bulk/block deals"""
+    """Get bulk/block deals — static sample, real data requires SEBI/NSE feed"""
     symbol = symbol.upper()
-
-    deals = []
-    for i in range(5):
-        deal_type = random.choice(["BULK", "BLOCK"])
-        is_buy = random.choice([True, False])
-
-        deals.append(
-            {
-                "date": f"2025-0{random.randint(1, 3)}-{random.randint(10, 28)}",
-                "type": deal_type,
-                "buyer": f"FII_{random.randint(100, 999)}"
-                if is_buy
-                else f"Promoter_{symbol}",
-                "seller": f"Promoter_{symbol}"
-                if is_buy
-                else f"FII_{random.randint(100, 999)}",
-                "quantity": random.randint(100000, 5000000),
-                "price": random.randint(500, 5000),
-                "value": random.randint(10000000, 1000000000),
-            }
-        )
-
-    return {"success": True, "data": deals}
+    # Return empty list for symbols not in sample set — do not generate fake randoms
+    static_deals = {
+        "RELIANCE": [
+            {"date": "2025-03-28", "type": "BLOCK", "buyer": "FII_TIGER_GLOBAL", "seller": "Promoter_RELIANCE", "quantity": 2500000, "price": 1592, "value": 3980000000},
+            {"date": "2025-02-15", "type": "BULK", "buyer": "SBI_MF", "seller": "FII_CLSA", "quantity": 1000000, "price": 1548, "value": 1548000000},
+        ],
+        "TCS": [
+            {"date": "2025-03-20", "type": "BLOCK", "buyer": "LIC", "seller": "FII_JPMORGAN", "quantity": 800000, "price": 4450, "value": 3560000000},
+        ],
+        "HDFCBANK": [
+            {"date": "2025-03-25", "type": "BULK", "buyer": "FII_MORGAN_STANLEY", "seller": "DII_ICICI_PRU", "quantity": 3000000, "price": 1685, "value": 5055000000},
+        ],
+    }
+    return {"success": True, "data": static_deals.get(symbol, [])}
 
 
 @router.get("/mf-holdings/{symbol}")
 async def get_mf_holdings(symbol: str):
-    """Get mutual fund holdings"""
+    """Get mutual fund holdings — static sample data"""
     symbol = symbol.upper()
-
-    mfs = [
-        "HDFC MF",
-        "ICICI Prudential MF",
-        "SBI MF",
-        "Axis MF",
-        "Kotak MF",
-        "Mirae Asset MF",
-    ]
-
-    holdings = []
-    for mf in mfs[:5]:
-        holdings.append(
-            {
-                "mf_name": mf,
-                "quantity": random.randint(1000000, 50000000),
-                "change": random.randint(-500000, 2000000),
-                "quarter": "Q3 2025",
-            }
-        )
-
-    return {"success": True, "data": holdings}
+    static_holdings = {
+        "RELIANCE": [
+            {"mf_name": "SBI MF", "quantity": 45000000, "change": 1200000, "quarter": "Q3 2025"},
+            {"mf_name": "HDFC MF", "quantity": 38000000, "change": -800000, "quarter": "Q3 2025"},
+            {"mf_name": "ICICI Prudential MF", "quantity": 32000000, "change": 500000, "quarter": "Q3 2025"},
+            {"mf_name": "Axis MF", "quantity": 18000000, "change": 200000, "quarter": "Q3 2025"},
+            {"mf_name": "Kotak MF", "quantity": 12000000, "change": -300000, "quarter": "Q3 2025"},
+        ],
+        "TCS": [
+            {"mf_name": "SBI MF", "quantity": 22000000, "change": 500000, "quarter": "Q3 2025"},
+            {"mf_name": "HDFC MF", "quantity": 19000000, "change": -200000, "quarter": "Q3 2025"},
+            {"mf_name": "Mirae Asset MF", "quantity": 15000000, "change": 800000, "quarter": "Q3 2025"},
+        ],
+    }
+    return {"success": True, "data": static_holdings.get(symbol, [])}
 
 
 @router.get("/corporate-actions")
