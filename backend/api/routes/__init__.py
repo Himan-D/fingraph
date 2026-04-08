@@ -1,2 +1,20 @@
 # API routes
-from . import quotes, fundamentals, screener, graph, ai
+from . import (
+    quotes,
+    fundamentals,
+    screener,
+    graph,
+    ai,
+    news,
+    watchlist,
+    search,
+    webhooks,
+    sebi,
+    social,
+    analytics,
+    commodity,
+    agent,
+    billing,
+    signals,
+    monitoring,
+)

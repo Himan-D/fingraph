@@ -16,6 +16,13 @@ from api.routes import (
     search,
     webhooks,
     sebi,
+    social,
+    analytics,
+    commodity,
+    agent,
+    billing,
+    signals,
+    monitoring,
 )
 from db.postgres import init_db
 from db.redis_client import init_redis, close_redis
@@ -97,7 +104,12 @@ app.add_middleware(
 
 # Include routers
 app.include_router(
-    quotes.router, prefix=f"{settings.API_V1_PREFIX}/quotes", tags=["quotes"]
+    commodity.router,
+    prefix=f"{settings.API_V1_PREFIX}/commodities",
+    tags=["commodities"],
+)
+app.include_router(
+    agent.router, prefix=f"{settings.API_V1_PREFIX}/agent", tags=["agent"]
 )
 app.include_router(
     fundamentals.router, prefix=f"{settings.API_V1_PREFIX}", tags=["fundamentals"]
@@ -120,6 +132,31 @@ app.include_router(
     webhooks.router, prefix=f"{settings.API_V1_PREFIX}/webhooks", tags=["webhooks"]
 )
 app.include_router(sebi.router, prefix=f"{settings.API_V1_PREFIX}/sebi", tags=["sebi"])
+app.include_router(
+    social.router, prefix=f"{settings.API_V1_PREFIX}/social", tags=["social"]
+)
+app.include_router(
+    analytics.router, prefix=f"{settings.API_V1_PREFIX}/analytics", tags=["analytics"]
+)
+app.include_router(
+    commodity.router,
+    prefix=f"{settings.API_V1_PREFIX}/commodities",
+    tags=["commodities"],
+)
+app.include_router(
+    agent.router, prefix=f"{settings.API_V1_PREFIX}/agent", tags=["agent"]
+)
+app.include_router(
+    billing.router, prefix=f"{settings.API_V1_PREFIX}/billing", tags=["billing"]
+)
+app.include_router(
+    signals.router, prefix=f"{settings.API_V1_PREFIX}/signals", tags=["signals"]
+)
+app.include_router(
+    monitoring.router,
+    prefix=f"{settings.API_V1_PREFIX}/monitoring",
+    tags=["monitoring"],
+)
 
 
 @app.get("/")
@@ -136,6 +173,7 @@ async def health():
     try:
         from db.postgres import engine
         from sqlalchemy import text
+
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         status["services"]["postgres"] = "ok"
@@ -146,6 +184,7 @@ async def health():
     # Redis
     try:
         from db.redis_client import get_redis
+
         redis = await get_redis()
         await redis.ping()
         status["services"]["redis"] = "ok"

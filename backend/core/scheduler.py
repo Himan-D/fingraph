@@ -135,6 +135,26 @@ async def scrape_historical_data():
         logger.error(f"Historical data scrape error: {e}")
 
 
+async def scrape_social_media():
+    """Scrape Twitter and Reddit for finance data"""
+    try:
+        from core.services.social_pipeline import run_pipeline
+
+        await run_pipeline()
+    except Exception as e:
+        logger.error(f"Social media pipeline error: {e}")
+
+
+async def scrape_commodities():
+    """Scrape commodity prices and news"""
+    try:
+        from core.services.commodity_pipeline import run_pipeline
+
+        await run_pipeline()
+    except Exception as e:
+        logger.error(f"Commodity pipeline error: {e}")
+
+
 async def build_knowledge_graph_nodes():
     """Build knowledge graph in Neo4j using AI to determine relationships"""
     try:
@@ -239,9 +259,25 @@ def start_scheduler():
             replace_existing=True,
         )
 
+        # Schedule social media scraping every 15 minutes
+        scheduler.add_job(
+            scrape_social_media,
+            trigger=IntervalTrigger(minutes=15),
+            id="social_media_scraper",
+            replace_existing=True,
+        )
+
+        # Schedule commodity scraping every 15 minutes
+        scheduler.add_job(
+            scrape_commodities,
+            trigger=IntervalTrigger(minutes=15),
+            id="commodity_scraper",
+            replace_existing=True,
+        )
+
         scheduler.start()
         logger.info(
-            "Scheduler started: news(30m), sebi(2h), stocks(5min), historical(24h), kg(1h)"
+            "Scheduler started: news(30m), sebi(2h), stocks(5min), historical(24h), kg(1h), social(15min), commodities(15min)"
         )
     except Exception as e:
         logger.error(f"Scheduler error: {e}")
