@@ -144,3 +144,112 @@ class Watchlist(Base):
     name = Column(String(100))
     symbols = Column(JSON)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class TwitterPost(Base):
+    __tablename__ = "twitter_posts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    post_id = Column(String(100), unique=True)
+    username = Column(String(100), index=True)
+    text = Column(Text)
+    source = Column(String(50))
+    symbol = Column(String(20))
+    timestamp = Column(DateTime, index=True)
+    likes = Column(Integer, default=0)
+    retweets = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class RedditPost(Base):
+    __tablename__ = "reddit_posts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    post_id = Column(String(100), unique=True)
+    title = Column(Text)
+    text = Column(Text)
+    author = Column(String(100), index=True)
+    subreddit = Column(String(50), index=True)
+    url = Column(String(1000))
+    score = Column(Integer, default=0)
+    num_comments = Column(Integer, default=0)
+    symbols = Column(JSON)
+    timestamp = Column(DateTime, index=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class SocialSentiment(Base):
+    __tablename__ = "social_sentiment"
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String(20), index=True)
+    date = Column(Date, index=True)
+    source = Column(String(20))
+    sentiment_score = Column(Float)
+    mention_count = Column(Integer, default=0)
+    bullish_count = Column(Integer, default=0)
+    bearish_count = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class Commodity(Base):
+    __tablename__ = "commodities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String(20), unique=True, nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    exchange = Column(String(20))
+    category = Column(String(50))
+    unit = Column(String(20))
+    description = Column(Text)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class CommodityPrice(Base):
+    __tablename__ = "commodity_prices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    commodity_id = Column(Integer, index=True)
+    timestamp = Column(DateTime, nullable=False, index=True)
+    open = Column(Float)
+    high = Column(Float)
+    low = Column(Float)
+    close = Column(Float)
+    settlement = Column(Float)
+    previous_close = Column(Float)
+    change = Column(Float)
+    change_pct = Column(Float)
+    volume = Column(BigInteger)
+    open_interest = Column(BigInteger)
+    delivery = Column(Float)
+    turnover = Column(Float)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class CommodityNews(Base):
+    __tablename__ = "commodity_news"
+
+    id = Column(Integer, primary_key=True, index=True)
+    headline = Column(Text)
+    summary = Column(Text)
+    source = Column(String(100))
+    url = Column(String(1000))
+    commodities = Column(JSON)
+    published_at = Column(DateTime)
+    sentiment = Column(String(20))
+    tags = Column(JSON)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class CommoditySentiment(Base):
+    __tablename__ = "commodity_sentiment"
+
+    id = Column(Integer, primary_key=True, index=True)
+    commodity_symbol = Column(String(20), index=True)
+    date = Column(Date, index=True)
+    source = Column(String(20))
+    sentiment_score = Column(Float)
+    mention_count = Column(Integer, default=0)
+    bullish_count = Column(Integer, default=0)
+    bearish_count = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=func.now())
