@@ -4,7 +4,7 @@ from typing import Optional
 router = APIRouter()
 
 
-@router.get("/risk/commodity/{symbol}")
+@router.get("/commodity/{symbol}")
 async def get_risk_analysis(symbol: str):
     """Get full risk analysis for a commodity"""
     from core.services.risk_engine import get_risk_engine
@@ -31,7 +31,7 @@ async def get_risk_analysis(symbol: str):
     return await engine.run_full_risk_analysis(symbol.upper(), current_price)
 
 
-@router.get("/risk/var/{symbol}")
+@router.get("/var/{symbol}")
 async def get_var(symbol: str):
     """Get VaR calculation"""
     from core.services.risk_engine import get_risk_engine
@@ -40,7 +40,7 @@ async def get_var(symbol: str):
     return await engine.var_calculation(symbol.upper())
 
 
-@router.get("/risk/monte-carlo/{symbol}")
+@router.get("/monte-carlo/{symbol}")
 async def get_monte_carlo(
     symbol: str,
     price: float = Query(0),
@@ -69,7 +69,7 @@ async def get_monte_carlo(
     return await engine.monte_carlo_simulation(symbol.upper(), price, days)
 
 
-@router.get("/risk/stress/{symbol}")
+@router.get("/stress/{symbol}")
 async def get_stress_test(symbol: str):
     """Get stress test scenarios"""
     from core.services.risk_engine import get_risk_engine
@@ -78,7 +78,7 @@ async def get_stress_test(symbol: str):
     return await engine.stress_test(symbol.upper())
 
 
-@router.get("/risk/portfolio")
+@router.get("/portfolio")
 async def get_portfolio_risk(
     positions: str = Query(..., description="JSON array of positions")
 ):
@@ -97,7 +97,7 @@ async def get_portfolio_risk(
     return await engine.portfolio_var(pos_list)
 
 
-@router.get("/risk/greeks")
+@router.get("/greeks")
 async def get_greeks(
     symbol: str = Query(...),
     strike: float = Query(...),

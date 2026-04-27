@@ -11,10 +11,17 @@ Handles:
 import hashlib
 import secrets
 import logging
+import sys
+from pathlib import Path
 from datetime import datetime, timedelta, date
 from typing import Optional, Dict, List
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
+
+# Ensure backend root is in path before kimi project
+_backend_root = str(Path(__file__).parent.parent.parent)
+if _backend_root not in sys.path:
+    sys.path.insert(0, _backend_root)
 
 from models.billing import (
     Plan,

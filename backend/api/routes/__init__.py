@@ -12,6 +12,7 @@ from . import (
     sebi,
     social,
     analytics,
+    risk,
     commodity,
     agent,
     billing,

@@ -18,6 +18,7 @@ from api.routes import (
     sebi,
     social,
     analytics,
+    risk,
     commodity,
     agent,
     billing,
@@ -137,6 +138,9 @@ app.include_router(
 )
 app.include_router(
     analytics.router, prefix=f"{settings.API_V1_PREFIX}/analytics", tags=["analytics"]
+)
+app.include_router(
+    risk.router, prefix=f"{settings.API_V1_PREFIX}/risk", tags=["risk"]
 )
 app.include_router(
     commodity.router,

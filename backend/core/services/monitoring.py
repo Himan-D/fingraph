@@ -9,11 +9,18 @@ Professional observability for:
 """
 
 import logging
+import sys
 import time
+from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 from collections import deque
+
+# Ensure backend root is in path before kimi project
+_backend_root = str(Path(__file__).parent.parent.parent)
+if _backend_root not in sys.path:
+    sys.path.insert(0, _backend_root)
 
 from sqlalchemy import select, func, and_
 from db.postgres import AsyncSessionLocal
