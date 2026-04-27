@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom'
-import { Search, Bell, Settings, Menu, X, LayoutDashboard, TrendingUp, Filter, Share2, LineChart, MessageSquare, Plus, Star, TrendingDown, TrendingUpIcon, Activity, RefreshCw, Wifi, WifiOff, Moon, Sun, ArrowRight, Layers } from 'lucide-react'
+import { Search, Bell, Settings, Menu, X, LayoutDashboard, TrendingUp, Filter, Share2, LineChart, MessageSquare, Plus, Star, TrendingDown, TrendingUpIcon, Activity, RefreshCw, Wifi, WifiOff, Moon, Sun, ArrowRight, Layers, Brain, Network } from 'lucide-react'
 import Dashboard from './components/Dashboard/Dashboard'
 import QuoteBoard from './components/Dashboard/QuoteBoard'
 import Quotes from './components/Quotes/Quotes'
@@ -10,6 +10,8 @@ import AIChat from './components/AIChat/AIChat'
 import Screener from './components/Screener/Screener'
 import News from './components/News/News'
 import OptionChain from './components/OptionChain/OptionChain'
+import RiskAnalytics from './components/RiskAnalytics/RiskAnalytics'
+import GraphAnalytics from './components/GraphAnalytics/GraphAnalytics'
 import axios from 'axios'
 
 interface Notification {
@@ -53,6 +55,8 @@ function AppContent() {
     { id: 'quotes', label: 'Quotes', icon: <TrendingUp size={18} />, path: '/quotes' },
     { id: 'screener', label: 'Screener', icon: <Filter size={18} />, path: '/screener' },
     { id: 'graph', label: 'Knowledge Graph', icon: <Share2 size={18} />, path: '/graph' },
+    { id: 'gds', label: 'GDS Analytics', icon: <Network size={18} />, path: '/gds' },
+    { id: 'risk', label: 'Risk Engine', icon: <Brain size={18} />, path: '/risk' },
     { id: 'charts', label: 'Charts', icon: <LineChart size={18} />, path: '/charts' },
     { id: 'options', label: 'Option Chain', icon: <Layers size={18} />, path: '/options' },
     { id: 'news', label: 'News', icon: <Bell size={18} />, path: '/news' },
@@ -423,6 +427,8 @@ function AppContent() {
               <Route path="/quotes" element={<Quotes />} />
               <Route path="/screener" element={<Screener />} />
               <Route path="/graph" element={<GraphExplorer />} />
+              <Route path="/gds" element={<GraphAnalytics />} />
+              <Route path="/risk" element={<RiskAnalytics />} />
               <Route path="/charts" element={<Charts />} />
               <Route path="/options" element={<OptionChain />} />
               <Route path="/news" element={<News />} />

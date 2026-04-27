@@ -23,6 +23,7 @@ from api.routes import (
     billing,
     signals,
     monitoring,
+    risk,
 )
 from db.postgres import init_db
 from db.redis_client import init_redis, close_redis
@@ -156,6 +157,11 @@ app.include_router(
     monitoring.router,
     prefix=f"{settings.API_V1_PREFIX}/monitoring",
     tags=["monitoring"],
+)
+app.include_router(
+    risk.router,
+    prefix=f"{settings.API_V1_PREFIX}/analytics",
+    tags=["analytics"],
 )
 
 
