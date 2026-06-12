@@ -15,7 +15,6 @@ export default defineConfig({
     fs: {
       allow: ['..'],
     },
-    historyApiFallback: true,
   },
   build: {
     outDir: 'dist',

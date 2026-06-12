@@ -493,124 +493,155 @@ class Neo4jGraph:
             except Exception as e:
                 logger.warning(f"Failed to get company graph from Neo4j: {e}")
 
-        # Fallback
-        company = SAMPLE_GRAPH_DATA["companies"].get(symbol, {})
-        if not company:
-            return {"nodes": [], "edges": []}
-
-        nodes.append(
-            {
-                "id": symbol,
-                "label": "Company",
-                "data": company,
-            }
-        )
-
-        sector = company.get("sector", "Other")
-        nodes.append(
-            {
-                "id": sector,
-                "label": "Sector",
-                "data": {"name": sector},
-            }
-        )
-        edges.append(
-            {
-                "from": symbol,
-                "to": sector,
-                "type": "BELONGS_TO_SECTOR",
-                "label": "Belongs to",
-            }
-        )
-
-        return {"nodes": nodes, "edges": edges}
+        return {
+            "nodes": [],
+            "edges": [],
+            "error": "Neo4j not connected",
+            "message": "Knowledge graph requires Neo4j database connection",
+        }
 
     async def get_promoter_network(self, promoter_name: str) -> Dict:
         """Get all companies for a promoter"""
-        companies = SAMPLE_GRAPH_DATA["promoters"].get(promoter_name, [])
+        if self.driver:
+            try:
+                with self.driver.session() as session:
+                    result = session.run(
+                        """
+                        MATCH (p:Promoter {name: $name})-[r:PROMOTER_OF]->(c:Company)
+                        RETURN c.symbol as symbol, c.name as name, c.sector as sector,
+                               c.industry as industry, c.market_cap as market_cap,
+                               r.holding as holding
+                        """,
+                        name=promoter_name,
+                    )
+                    records = result.data()
+                    if records:
+                        nodes = []
+                        edges = []
+                        promoter_id = promoter_name.replace(" ", "_")
+                        nodes.append(
+                            {
+                                "id": promoter_id,
+                                "label": "Promoter",
+                                "data": {"name": promoter_name},
+                            }
+                        )
+                        for rec in records:
+                            nodes.append(
+                                {
+                                    "id": rec["symbol"],
+                                    "label": "Company",
+                                    "data": {
+                                        "name": rec.get("name", rec["symbol"]),
+                                        "sector": rec.get("sector", ""),
+                                        "industry": rec.get("industry", ""),
+                                        "market_cap": rec.get("market_cap", 0),
+                                    },
+                                }
+                            )
+                            edges.append(
+                                {
+                                    "from": promoter_id,
+                                    "to": rec["symbol"],
+                                    "type": "PROMOTER_OF",
+                                    "label": f"Promoter ({rec.get('holding', 0)}%)",
+                                }
+                            )
+                        return {"nodes": nodes, "edges": edges}
+            except Exception as e:
+                logger.warning(f"Failed to get promoter network from Neo4j: {e}")
 
-        nodes = []
-        edges = []
-
-        # Add promoter node
-        nodes.append(
-            {
-                "id": promoter_name.replace(" ", "_"),
-                "label": "Promoter",
-                "data": {"name": promoter_name},
-            }
-        )
-
-        for symbol in companies:
-            company = SAMPLE_GRAPH_DATA["companies"].get(symbol, {"name": symbol})
-            nodes.append(
-                {
-                    "id": symbol,
-                    "label": "Company",
-                    "data": company,
-                }
-            )
-            edges.append(
-                {
-                    "from": promoter_name.replace(" ", "_"),
-                    "to": symbol,
-                    "type": "PROMOTER_OF",
-                    "label": f"Promoter ({company.get('promoter_holding', 0)}%)",
-                }
-            )
-
-        return {"nodes": nodes, "edges": edges}
+        return {
+            "nodes": [],
+            "edges": [],
+            "error": "Neo4j not connected",
+            "message": "Knowledge graph requires Neo4j database connection",
+        }
 
     async def get_sector_graph(self, sector: str) -> Dict:
         """Get graph for entire sector"""
-        sector_data = SAMPLE_GRAPH_DATA["sectors"].get(sector, {})
-        companies = sector_data.get("companies", [])
+        if self.driver:
+            try:
+                with self.driver.session() as session:
+                    nodes = []
+                    edges = []
 
-        nodes = []
-        edges = []
+                    result = session.run(
+                        """
+                        MATCH (s:Sector {name: $sector})
+                        RETURN s.name as name
+                        """,
+                        sector=sector,
+                    )
+                    if not result.single():
+                        return {"nodes": [], "edges": []}
 
-        # Add sector node
-        nodes.append(
-            {
-                "id": sector,
-                "label": "Sector",
-                "data": {"name": sector},
-            }
-        )
+                    nodes.append(
+                        {
+                            "id": sector,
+                            "label": "Sector",
+                            "data": {"name": sector},
+                        }
+                    )
 
-        for symbol in companies:
-            company = SAMPLE_GRAPH_DATA["companies"].get(symbol, {"name": symbol})
-            nodes.append(
-                {
-                    "id": symbol,
-                    "label": "Company",
-                    "data": company,
-                }
-            )
-            edges.append(
-                {
-                    "from": symbol,
-                    "to": sector,
-                    "type": "BELONGS_TO_SECTOR",
-                    "label": "Belongs to",
-                }
-            )
-
-            # Add relationships between companies
-            for rel in SAMPLE_GRAPH_DATA["relationships"]:
-                if rel["from"] == symbol and rel["type"] == "COMPETES_WITH":
-                    comp = rel["to"]
-                    if comp in companies:
+                    result = session.run(
+                        """
+                        MATCH (c:Company)-[:BELONGS_TO_SECTOR]->(s:Sector {name: $sector})
+                        RETURN c.symbol as symbol, c.name as name, c.sector as sector,
+                               c.industry as industry, c.market_cap as market_cap
+                        """,
+                        sector=sector,
+                    )
+                    for rec in result:
+                        nodes.append(
+                            {
+                                "id": rec["symbol"],
+                                "label": "Company",
+                                "data": {
+                                    "name": rec.get("name", rec["symbol"]),
+                                    "sector": rec.get("sector", ""),
+                                    "industry": rec.get("industry", ""),
+                                    "market_cap": rec.get("market_cap", 0),
+                                },
+                            }
+                        )
                         edges.append(
                             {
-                                "from": symbol,
-                                "to": comp,
-                                "type": "COMPETES_WITH",
+                                "from": rec["symbol"],
+                                "to": sector,
+                                "type": "BELONGS_TO_SECTOR",
+                                "label": "Belongs to",
+                            }
+                        )
+
+                    result = session.run(
+                        """
+                        MATCH (c:Company)-[:BELONGS_TO_SECTOR]->(s:Sector {name: $sector}),
+                              (c)-[r:COMPETITOR]->(comp:Company)-[:BELONGS_TO_SECTOR]->(s)
+                        RETURN c.symbol as from, comp.symbol as to
+                        """,
+                        sector=sector,
+                    )
+                    for rec in result:
+                        edges.append(
+                            {
+                                "from": rec["from"],
+                                "to": rec["to"],
+                                "type": "COMPETITOR",
                                 "label": "Competitor",
                             }
                         )
 
-        return {"nodes": nodes, "edges": edges}
+                    return {"nodes": nodes, "edges": edges}
+            except Exception as e:
+                logger.warning(f"Failed to get sector graph from Neo4j: {e}")
+
+        return {
+            "nodes": [],
+            "edges": [],
+            "error": "Neo4j not connected",
+            "message": "Knowledge graph requires Neo4j database connection",
+        }
 
     async def get_full_graph(self) -> Dict:
         """Get complete knowledge graph from Neo4j or sample data"""
@@ -676,37 +707,12 @@ class Neo4jGraph:
             except Exception as e:
                 logger.warning(f"Failed to get data from Neo4j: {e}")
 
-        # Fallback to sample data
-        for symbol, company in SAMPLE_GRAPH_DATA["companies"].items():
-            nodes.append(
-                {
-                    "id": symbol,
-                    "label": "Company",
-                    "data": company,
-                }
-            )
-
-        for sector in SAMPLE_GRAPH_DATA["sectors"].keys():
-            if not any(n["id"] == sector for n in nodes):
-                nodes.append(
-                    {
-                        "id": sector,
-                        "label": "Sector",
-                        "data": {"name": sector},
-                    }
-                )
-
-        for rel in SAMPLE_GRAPH_DATA["relationships"]:
-            edges.append(
-                {
-                    "from": rel["from"],
-                    "to": rel["to"],
-                    "type": rel["type"],
-                    "label": rel.get("label", rel["type"]),
-                }
-            )
-
-        return {"nodes": nodes, "edges": edges}
+        return {
+            "nodes": [],
+            "edges": [],
+            "error": "Neo4j not connected",
+            "message": "Knowledge graph requires Neo4j database connection",
+        }
 
     async def search(self, query: str) -> List[Dict]:
         """Search entities"""
@@ -748,19 +754,7 @@ class Neo4jGraph:
             except Exception as e:
                 logger.warning(f"Failed to search Neo4j entities: {e}")
 
-        # Search companies
-        for symbol, data in SAMPLE_GRAPH_DATA["companies"].items():
-            if query in symbol or query in data.get("name", "").upper():
-                results.append({"type": "company", "id": symbol, "data": data})
-
-        # Search sectors
-        for sector in SAMPLE_GRAPH_DATA["sectors"].keys():
-            if query in sector.upper():
-                results.append(
-                    {"type": "sector", "id": sector, "data": {"name": sector}}
-                )
-
-        return results
+        return []
 
 
 # Singleton instance

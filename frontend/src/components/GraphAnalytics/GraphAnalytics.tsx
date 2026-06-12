@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { 
-  Network, GitBranch, Zap, Target, Users, 
-  TrendingUp, AlertCircle, Search, Filter
+  Network, GitBranch, Zap, Target, 
+  TrendingUp, AlertCircle
 } from 'lucide-react'
 import axios from 'axios'
 

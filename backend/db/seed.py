@@ -312,21 +312,26 @@ async def seed_data():
         now = datetime.now()
         for c in company_objs:
             base = base_prices.get(c.symbol, 1000)
-            variation = random.uniform(-0.02, 0.02)
-            price = base * (1 + variation)
-            change = price - base
-            pct_change = (change / base) * 100
-
-            quote = StockQuote(
-                company_id=c.id,
-                timestamp=now,
-                open=base * (1 + random.uniform(-0.01, 0.01)),
-                high=base * (1 + random.uniform(0, 0.025)),
-                low=base * (1 + random.uniform(-0.025, 0)),
-                close=price,
-                volume=random.randint(500000, 5000000),
-            )
-            session.add(quote)
+            price = base
+            for day_offset in range(730, -1, -1):
+                dt = now - timedelta(days=day_offset)
+                if dt.weekday() >= 5:
+                    continue
+                daily_change = random.uniform(-0.025, 0.03)
+                price = price * (1 + daily_change)
+                o = price * (1 + random.uniform(-0.008, 0.008))
+                h = max(o, price) * (1 + random.uniform(0, 0.01))
+                l = min(o, price) * (1 - random.uniform(0, 0.01))
+                quote = StockQuote(
+                    company_id=c.id,
+                    timestamp=dt,
+                    open=round(o, 2),
+                    high=round(h, 2),
+                    low=round(l, 2),
+                    close=round(price, 2),
+                    volume=random.randint(500000, 5000000),
+                )
+                session.add(quote)
 
         # Seed News
         news_items = [

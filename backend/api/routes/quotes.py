@@ -4,6 +4,7 @@ from sqlalchemy import select, desc, func, text
 from typing import List, Optional
 from datetime import datetime, timedelta
 import logging
+import random
 
 from db.postgres import get_db
 from db.postgres_models import Company, StockQuote, Fundamental

@@ -3,6 +3,7 @@ import logging
 from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 
 from db.postgres import AsyncSessionLocal
 from db.postgres_models import NewsArticle, Company, StockQuote
@@ -22,39 +23,43 @@ async def scrape_and_store_news():
         news_items = await scraper.get_all_rss_news()
 
         if not news_items:
-            # Fallback to web scraper
             from core.scraper.news_scraper import NewsScraper
 
             web_scraper = NewsScraper()
             news_items = await web_scraper.get_all_news()
 
         async with AsyncSessionLocal() as session:
-            # Don't delete - just add new news
-            # Keep only last 500 articles to prevent DB bloat
             result = await session.execute(
                 select(NewsArticle).order_by(NewsArticle.id.desc())
             )
             existing = result.scalars().all()
             if len(existing) > 500:
-                # Delete oldest
                 to_delete = existing[500:]
                 for old in to_delete:
                     await session.delete(old)
 
             for item in news_items:
                 news = NewsArticle(
-                    headline=item.get("headline", ""),  # No limit
-                    summary=item.get("summary", ""),  # No limit
+                    headline=item.get("headline", ""),
+                    summary=item.get("summary", ""),
                     source=item.get("source", ""),
                     url=item.get("url", ""),
                     published_at=datetime.now(),
-                    sentiment="neutral",
+                    sentiment=None,
                     related_symbols=[],
                 )
                 session.add(news)
 
             await session.commit()
             logger.info(f"Stored {len(news_items)} news items from RSS")
+
+        if news_items:
+            try:
+                from core.pipelines.news_pipeline import process_unsentimented_articles
+                await process_unsentimented_articles()
+            except Exception as se:
+                logger.warning(f"Sentiment processing skipped: {se}")
+
     except Exception as e:
         logger.error(f"News scraping error: {e}")
 
@@ -216,6 +221,30 @@ async def build_knowledge_graph_nodes():
         logger.error(f"Knowledge graph error: {e}")
 
 
+async def run_alert_scan():
+    """Run AI alert engine for watchlisted stocks"""
+    try:
+        from core.services.alert_engine import AlertEngine
+
+        engine = AlertEngine()
+        alerts = await engine.run_for_all_watchlists()
+        if alerts:
+            logger.info(f"Alert engine generated {len(alerts)} alerts")
+    except Exception as e:
+        logger.error(f"Alert scan error: {e}")
+
+
+async def scrape_fundamentals():
+    """Scrape fundamentals from Screener.in for all tracked stocks"""
+    try:
+        from core.pipelines.fundamentals_pipeline import refresh_all_fundamentals
+        results = await refresh_all_fundamentals(limit=200)
+        success = sum(1 for r in results if r.get("success"))
+        logger.info(f"Fundamentals scrape: {success}/{len(results)} stocks updated")
+    except Exception as e:
+        logger.error(f"Fundamentals scrape error: {e}")
+
+
 def start_scheduler():
     """Start background scheduler"""
     try:
@@ -275,9 +304,25 @@ def start_scheduler():
             replace_existing=True,
         )
 
+        # Schedule fundamentals scraping daily at 18:00 IST (market close)
+        scheduler.add_job(
+            scrape_fundamentals,
+            trigger=CronTrigger(hour=18, minute=0, timezone="Asia/Kolkata"),
+            id="fundamentals_scraper",
+            replace_existing=True,
+        )
+
+        # Schedule AI alert engine every 15 minutes
+        scheduler.add_job(
+            run_alert_scan,
+            trigger=IntervalTrigger(minutes=15),
+            id="alert_engine",
+            replace_existing=True,
+        )
+
         scheduler.start()
         logger.info(
-            "Scheduler started: news(30m), sebi(2h), stocks(5min), historical(24h), kg(1h), social(15min), commodities(15min)"
+            "Scheduler started: news(30m), sebi(2h), stocks(5min), historical(24h), kg(1h), social(15min), commodities(15min), fundamentals(18:00 IST), alerts(15min)"
         )
     except Exception as e:
         logger.error(f"Scheduler error: {e}")

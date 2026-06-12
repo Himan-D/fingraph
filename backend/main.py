@@ -24,6 +24,8 @@ from api.routes import (
     billing,
     signals,
     monitoring,
+    auth,
+    builder,
 )
 from db.postgres import init_db
 from db.redis_client import init_redis, close_redis
@@ -33,6 +35,7 @@ from core.scheduler import start_scheduler, stop_scheduler
 from middleware.logging_middleware import RequestLoggingMiddleware
 from middleware.error_handler import ErrorHandlerMiddleware
 from middleware.rate_limiter import RateLimitMiddleware
+from middleware.auth_middleware import AuthMiddleware
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,6 +50,13 @@ async def lifespan(app: FastAPI):
     # Initialize databases
     await init_db()
     await init_redis()
+
+    # Auto-seed if empty
+    try:
+        from db.seed import seed_data
+        await seed_data()
+    except Exception as e:
+        logger.warning(f"Seed skipped: {e}")
 
     # Initialize TrueData service
     if settings.TRUEDATA_USERNAME and settings.TRUEDATA_PASSWORD:
@@ -89,21 +99,33 @@ app = FastAPI(
 )
 
 # Middleware — order matters: outermost runs first
-# ErrorHandler must wrap everything so it catches errors from other middleware too
 app.add_middleware(ErrorHandlerMiddleware)
+app.add_middleware(AuthMiddleware)
 app.add_middleware(RateLimitMiddleware, window=60, max_requests=120)
 app.add_middleware(RequestLoggingMiddleware)
 
 # CORS
+allowed_origins = [
+    origin.strip()
+    for origin in settings.CORS_ORIGINS.split(",") if origin.strip()
+] if settings.CORS_ORIGINS else [
+    "http://localhost:5173",
+    "http://localhost:3000",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Include routers
+app.include_router(
+    quotes.router,
+    prefix=f"{settings.API_V1_PREFIX}/quotes",
+    tags=["quotes"],
+)
 app.include_router(
     commodity.router,
     prefix=f"{settings.API_V1_PREFIX}/commodities",
@@ -143,14 +165,6 @@ app.include_router(
     risk.router, prefix=f"{settings.API_V1_PREFIX}/risk", tags=["risk"]
 )
 app.include_router(
-    commodity.router,
-    prefix=f"{settings.API_V1_PREFIX}/commodities",
-    tags=["commodities"],
-)
-app.include_router(
-    agent.router, prefix=f"{settings.API_V1_PREFIX}/agent", tags=["agent"]
-)
-app.include_router(
     billing.router, prefix=f"{settings.API_V1_PREFIX}/billing", tags=["billing"]
 )
 app.include_router(
@@ -160,6 +174,12 @@ app.include_router(
     monitoring.router,
     prefix=f"{settings.API_V1_PREFIX}/monitoring",
     tags=["monitoring"],
+)
+app.include_router(
+    auth.router, prefix=f"{settings.API_V1_PREFIX}/auth", tags=["auth"]
+)
+app.include_router(
+    builder.router, prefix=f"{settings.API_V1_PREFIX}/builder", tags=["builder"]
 )
 
 

@@ -1,0 +1,190 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-buy: var(--buy);
+  --color-sell: var(--sell);
+  --color-profit: var(--profit);
+  --color-loss: var(--loss);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius: 0.625rem;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+:root {
+  --background: #0a0e14;
+  --foreground: #e8edf5;
+  --primary: #00c853;
+  --primary-foreground: #0a0e14;
+  --secondary: #1a2332;
+  --secondary-foreground: #e8edf5;
+  --muted: #1a2332;
+  --muted-foreground: #8892a0;
+  --accent: #1e3a5f;
+  --accent-foreground: #e8edf5;
+  --destructive: #ff1744;
+  --destructive-foreground: #ffffff;
+  --border: #1e2d45;
+  --input: #1e2d45;
+  --ring: #00c853;
+  --radius: 0.625rem;
+  --sidebar: #0d1117;
+  --sidebar-foreground: #e8edf5;
+  --sidebar-accent: #1a2332;
+  --sidebar-accent-foreground: #e8edf5;
+  --sidebar-border: #1e2d45;
+  --sidebar-ring: #00c853;
+  --buy: #00c853;
+  --sell: #ff1744;
+  --profit: #00c853;
+  --loss: #ff1744;
+  --chart-1: #00c853;
+  --chart-2: #2979ff;
+  --chart-3: #ffd600;
+  --chart-4: #ff6d00;
+  --chart-5: #d500f9;
+
+  --glass-bg: rgba(13, 17, 23, 0.72);
+  --glass-border: rgba(30, 45, 69, 0.5);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  --glass-blur: 12px;
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(0, 200, 83, 0.2);
+  color: var(--foreground);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
+
+@utility glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+@utility glass-hover {
+  &:hover {
+    background: rgba(26, 35, 50, 0.8);
+    border-color: rgba(0, 200, 83, 0.3);
+  }
+}
+
+@utility card-gradient {
+  background: linear-gradient(135deg, rgba(13, 17, 23, 0.9) 0%, rgba(26, 35, 50, 0.6) 100%);
+}
+
+@utility trading-grid {
+  background-image:
+    linear-gradient(rgba(0, 200, 83, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 200, 83, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+@utility text-gradient {
+  background: linear-gradient(135deg, #00c853 0%, #2979ff 50%, #00e5ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+@utility glow-green {
+  box-shadow: 0 0 20px rgba(0, 200, 83, 0.15), 0 0 40px rgba(0, 200, 83, 0.05);
+}
+
+@utility glow-blue {
+  box-shadow: 0 0 20px rgba(41, 121, 255, 0.15), 0 0 40px rgba(41, 121, 255, 0.05);
+}
+
+@keyframes ticker-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-ticker {
+  animation: ticker-scroll 60s linear infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}

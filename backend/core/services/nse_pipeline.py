@@ -11,7 +11,7 @@ from sqlalchemy import select, and_
 from db.postgres import AsyncSessionLocal, engine
 from db.postgres_models import (
     StockQuote, Company, IndexQuote, 
-    OptionChain, StockInventory
+    OptionChainRecord, StockInventory
 )
 from core.data_sources.nse import get_nse_fetcher
 
@@ -95,7 +95,7 @@ class NSELiveDataPipeline:
                     low=quote.get("low", 0),
                     close=quote.get("price", 0),
                     volume=quote.get("volume", 0),
-                    value=quote.get("value", 0)
+                    turnover=quote.get("value", 0)
                 )
                 session.add(stock_quote)
                 await session.commit()
@@ -142,7 +142,7 @@ class NSELiveDataPipeline:
                     ce = record.get("CE", {})
                     pe = record.get("PE", {})
                     
-                    option = OptionChain(
+                    option = OptionChainRecord(
                         symbol=symbol,
                         expiry_date=datetime.strptime(
                             record.get("expiryDate", ""), "%d %b %Y"
@@ -160,7 +160,7 @@ class NSELiveDataPipeline:
                     )
                     session.add(option)
                     
-                    option_pe = OptionChain(
+                    option_pe = OptionChainRecord(
                         symbol=symbol,
                         expiry_date=datetime.strptime(
                             record.get("expiryDate", ""), "%d %b %Y"

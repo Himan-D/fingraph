@@ -10,9 +10,9 @@ class Settings(BaseSettings):
     # Neo4j
     NEO4J_URI: str = ""
     NEO4J_USER: str = "neo4j"
+    NEO4J_USERNAME: str = "neo4j"
     NEO4J_PASSWORD: str = ""
     NEO4J_DATABASE: str = "neo4j"
-    NEO4J_USERNAME: str = "neo4j"
 
     # Qdrant
     QDRANT_URL: str = "http://localhost:6333"
@@ -30,6 +30,15 @@ class Settings(BaseSettings):
 
     # Crawl4AI
     CRAWL4AI_URL: str = "http://localhost:11202"
+
+    # Auth
+    JWT_SECRET: str = "fingraph-jwt-secret-change-me-in-production-2024"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # CORS
+    CORS_ORIGINS: str = ""
 
     # App
     DEBUG: bool = True

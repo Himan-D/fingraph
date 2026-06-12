@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000/api/v1';
+const BASE = '/api/v1';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

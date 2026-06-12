@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 class QueryRequest(BaseModel):
     query: str
+    symbol: Optional[str] = None
     filters: Optional[dict] = None
 
 
@@ -33,7 +34,7 @@ async def _fetch_company_context(symbol: str) -> dict:
                     "sector": company.sector,
                     "industry": company.industry,
                     "market_cap": company.market_cap,
-                    "description": company.description,
+                    "description": getattr(company, "description", None),
                 })
 
             # Latest fundamental row
@@ -45,12 +46,12 @@ async def _fetch_company_context(symbol: str) -> dict:
             fund = fund_result.scalars().first()
             if fund:
                 ctx.update({
-                    "pe_ratio": fund.pe_ratio,
-                    "pb_ratio": fund.pb_ratio,
+                    "pe_ratio": fund.pe,
+                    "pb_ratio": fund.pb,
                     "roe": fund.roe,
                     "roce": fund.roce,
-                    "debt_to_equity": fund.debt_to_equity,
-                    "dividend_yield": fund.dividend_yield,
+                    "debt_to_equity": fund.debt_equity,
+                    "dividend_yield": getattr(fund, "dividend_yield", None),
                     "eps": fund.eps,
                 })
 
@@ -109,11 +110,22 @@ async def natural_query(request: QueryRequest):
         {"stocks": [{"symbol": "RELIANCE", "reason": "..."}]}
         """
 
+        user_content = request.query
+        if request.symbol:
+            ctx = await _fetch_company_context(request.symbol)
+            data_lines = "\n".join(
+                f"  - {k.replace('_', ' ').title()}: {v}"
+                for k, v in ctx.items()
+                if v is not None
+            )
+            if data_lines:
+                user_content = f"Context for {request.symbol}:\n{data_lines}\n\nUser question: {request.query}"
+
         response = await client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": request.query},
+                {"role": "user", "content": user_content},
             ],
             temperature=0.3,
         )
@@ -185,9 +197,78 @@ async def news_sentiment(symbol: str):
 
 
 @router.get("/alerts")
-async def get_ai_alerts():
+async def get_ai_alerts(limit: int = 20):
     """Get AI-generated alerts"""
-    return {"success": True, "data": []}
+    try:
+        from db.postgres import AsyncSessionLocal
+        from db.postgres_models import AIAlert
+        from sqlalchemy import select, desc
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(AIAlert)
+                .order_by(desc(AIAlert.created_at))
+                .limit(limit)
+            )
+            alerts = result.scalars().all()
+
+            return {
+                "success": True,
+                "data": [
+                    {
+                        "id": a.id,
+                        "symbol": a.symbol,
+                        "alert_type": a.alert_type,
+                        "severity": a.severity,
+                        "title": a.title,
+                        "summary": a.summary,
+                        "data": a.data,
+                        "is_read": bool(a.is_read),
+                        "created_at": a.created_at.isoformat() if a.created_at else None,
+                    }
+                    for a in alerts
+                ],
+            }
+    except Exception as e:
+        logger.error(f"Get alerts error: {e}")
+        return {"success": True, "data": []}
+
+
+@router.post("/alerts/{alert_id}/read")
+async def mark_alert_read(alert_id: int):
+    """Mark an alert as read"""
+    try:
+        from db.postgres import AsyncSessionLocal
+        from db.postgres_models import AIAlert
+        from sqlalchemy import select
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(AIAlert).where(AIAlert.id == alert_id)
+            )
+            alert = result.scalar_one_or_none()
+            if not alert:
+                raise HTTPException(status_code=404, detail="Alert not found")
+            alert.is_read = 1
+            await session.commit()
+            return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/alerts/scan")
+async def trigger_alert_scan():
+    """Manually trigger AI alert scan for watchlisted stocks"""
+    try:
+        from core.services.alert_engine import AlertEngine
+
+        engine = AlertEngine()
+        alerts = await engine.run_for_all_watchlists()
+        return {"success": True, "data": alerts, "count": len(alerts)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/analyze-pattern")

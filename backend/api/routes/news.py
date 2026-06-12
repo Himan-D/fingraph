@@ -24,7 +24,8 @@ async def get_news(limit: int = 10, db: AsyncSession = Depends(get_db)):
             "url": getattr(item, "url", None)
             or f"https://www.google.com/search?q={item.headline.replace(' ', '+')}",
             "category": item.sentiment,
-            "timestamp": item.published_at.isoformat() if item.published_at else None,
+            "sentiment": item.sentiment,
+            "published_at": item.published_at.isoformat() if item.published_at else None,
         }
         for item in news_items
     ]
@@ -54,7 +55,8 @@ async def get_news_by_category(
             "url": getattr(item, "url", None)
             or f"https://www.google.com/search?q={item.headline.replace(' ', '+')}",
             "category": item.sentiment,
-            "timestamp": item.published_at.isoformat() if item.published_at else None,
+            "sentiment": item.sentiment,
+            "published_at": item.published_at.isoformat() if item.published_at else None,
         }
         for item in news_items
     ]

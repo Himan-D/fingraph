@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { 
-  TrendingUp, TrendingDown, AlertTriangle, Activity, 
+  AlertTriangle, Activity, 
   BarChart3, PieChart, Target, Shield, Zap, Brain
 } from 'lucide-react'
 import axios from 'axios'
@@ -59,7 +58,7 @@ export default function RiskAnalytics() {
 
   const fetchCommodities = async () => {
     try {
-      const res = await axios.get('/api/v1/commodity/prices')
+      const res = await axios.get('/api/v1/commodities/prices')
       if (res.data.success) {
         setCommodities(res.data.data || [])
       }
@@ -76,7 +75,7 @@ export default function RiskAnalytics() {
   const fetchRiskAnalysis = async () => {
     setLoading(true)
     try {
-      const res = await axios.get(`/api/v1/analytics/risk/commodity/${selectedCommodity}`)
+      const res = await axios.get(`/api/v1/risk/commodity/${selectedCommodity}`)
       if (res.data) {
         setRiskData(res.data)
       }

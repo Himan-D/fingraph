@@ -12,7 +12,10 @@ import News from './components/News/News'
 import OptionChain from './components/OptionChain/OptionChain'
 import RiskAnalytics from './components/RiskAnalytics/RiskAnalytics'
 import GraphAnalytics from './components/GraphAnalytics/GraphAnalytics'
+import AgentDashboard from './components/Agent/AgentDashboard'
+import ScreenerBuilder from './components/Builder/ScreenerBuilder'
 import axios from 'axios'
+import CommandPalette from './components/AIChat/CommandPalette'
 
 interface Notification {
   id: number
@@ -61,6 +64,8 @@ function AppContent() {
     { id: 'options', label: 'Option Chain', icon: <Layers size={18} />, path: '/options' },
     { id: 'news', label: 'News', icon: <Bell size={18} />, path: '/news' },
     { id: 'ai', label: 'AI Assistant', icon: <MessageSquare size={18} />, path: '/ai' },
+    { id: 'agent', label: 'Agent Dashboard', icon: <Brain size={18} />, path: '/agent' },
+    { id: 'builder', label: 'Screener Builder', icon: <Filter size={18} />, path: '/builder/screener' },
   ]
 
   const currentNav = navItems.find(item => item.path === location.pathname) || navItems[0]
@@ -433,6 +438,8 @@ function AppContent() {
               <Route path="/options" element={<OptionChain />} />
               <Route path="/news" element={<News />} />
               <Route path="/ai" element={<AIChat />} />
+              <Route path="/agent" element={<AgentDashboard />} />
+              <Route path="/builder/screener" element={<ScreenerBuilder />} />
             </Routes>
           </div>
         </main>
@@ -563,6 +570,8 @@ function AppContent() {
         </div>
       )}
       
+      <CommandPalette />
+
       {/* Footer */}
       <footer className={`h-8 ${darkMode ? 'bg-[#161b22] border-[#30363d] text-gray-400' : 'bg-white border-gray-200 text-gray-600'} border-t flex items-center px-4 text-xs`}>
         <div className="flex items-center gap-4">

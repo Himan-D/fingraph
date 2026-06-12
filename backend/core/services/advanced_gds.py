@@ -154,8 +154,9 @@ class TemporalNetworkAnalysis:
         - horizon: Time horizon of relationship
         """
         from db.postgres import AsyncSessionLocal
-        from db.postgres_models import CommodityPrice
+        from db.postgres_models import CommodityPrice, Commodity
         from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
         from collections import defaultdict
         import statistics
 
@@ -164,17 +165,18 @@ class TemporalNetworkAnalysis:
         async with AsyncSessionLocal() as session:
             cutoff = datetime.utcnow() - timedelta(days=lookback_days)
             result = await session.execute(
-                select(CommodityPrice)
+                select(CommodityPrice, Commodity.symbol)
+                .join(Commodity, CommodityPrice.commodity_id == Commodity.id)
                 .where(CommodityPrice.timestamp >= cutoff)
+                .where(Commodity.symbol.in_(commodities))
                 .order_by(CommodityPrice.timestamp)
             )
-            prices = result.scalars().all()
+            rows = result.all()
 
-        for p in prices:
-            if p.symbol in commodities:
-                price_data[p.symbol].append(
-                    {"timestamp": p.timestamp, "price": float(p.price)}
-                )
+        for price_row, sym in rows:
+            price_data[sym].append(
+                {"timestamp": price_row.timestamp, "price": float(price_row.close)}
+            )
 
         lead_lag_results = []
 
@@ -269,13 +271,14 @@ class TemporalNetworkAnalysis:
         - Calm (low variance)
         """
         from db.postgres import AsyncSessionLocal
-        from db.postgres_models import CommodityPrice
+        from db.postgres_models import CommodityPrice, Commodity
         from sqlalchemy import select
 
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 select(CommodityPrice)
-                .where(CommodityPrice.symbol == symbol)
+                .join(Commodity, CommodityPrice.commodity_id == Commodity.id)
+                .where(Commodity.symbol == symbol)
                 .order_by(CommodityPrice.timestamp.desc())
                 .limit(200)
             )
@@ -284,7 +287,7 @@ class TemporalNetworkAnalysis:
         if len(prices) < 50:
             return []
 
-        price_series = [float(p.price) for p in reversed(prices)]
+        price_series = [float(p.close) for p in reversed(prices)]
         returns = np.diff(np.log(price_series))
 
         window_size = 20
@@ -353,21 +356,22 @@ class CausalDiscovery:
         If γᵢ coefficients are significant, X Granger-causes Y.
         """
         from db.postgres import AsyncSessionLocal
-        from db.postgres_models import CommodityPrice
+        from db.postgres_models import CommodityPrice, Commodity
         from sqlalchemy import select
 
         price_data = {cause: [], effect: []}
 
         async with AsyncSessionLocal() as session:
-            for symbol in [cause, effect]:
+            for sym in [cause, effect]:
                 result = await session.execute(
                     select(CommodityPrice)
-                    .where(CommodityPrice.symbol == symbol)
+                    .join(Commodity, CommodityPrice.commodity_id == Commodity.id)
+                    .where(Commodity.symbol == sym)
                     .order_by(CommodityPrice.timestamp.desc())
                     .limit(100)
                 )
                 prices = result.scalars().all()
-                price_data[symbol] = [float(p.price) for p in reversed(prices)]
+                price_data[sym] = [float(p.close) for p in reversed(prices)]
 
         if len(price_data[cause]) < lag + 10:
             return {"valid": False, "reason": "insufficient_data"}
@@ -487,13 +491,14 @@ class VolatilityClusteringAnalyzer:
         - Asymmetry (negative vs positive returns)
         """
         from db.postgres import AsyncSessionLocal
-        from db.postgres_models import CommodityPrice
+        from db.postgres_models import CommodityPrice, Commodity
         from sqlalchemy import select
 
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 select(CommodityPrice)
-                .where(CommodityPrice.symbol == symbol)
+                .join(Commodity, CommodityPrice.commodity_id == Commodity.id)
+                .where(Commodity.symbol == symbol)
                 .order_by(CommodityPrice.timestamp.desc())
                 .limit(100)
             )
@@ -502,7 +507,7 @@ class VolatilityClusteringAnalyzer:
         if len(prices) < 20:
             return {"valid": False}
 
-        price_series = [float(p.price) for p in reversed(prices)]
+        price_series = [float(p.close) for p in reversed(prices)]
         returns = np.diff(np.log(price_series))
 
         realized_vol = np.std(returns) * np.sqrt(252) * 100
@@ -736,13 +741,14 @@ class RiskNetworkAnalyzer:
         CVaR_α = E[Loss | Loss > VaR_α]
         """
         from db.postgres import AsyncSessionLocal
-        from db.postgres_models import CommodityPrice
+        from db.postgres_models import CommodityPrice, Commodity
         from sqlalchemy import select
 
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 select(CommodityPrice)
-                .where(CommodityPrice.symbol == symbol)
+                .join(Commodity, CommodityPrice.commodity_id == Commodity.id)
+                .where(Commodity.symbol == symbol)
                 .order_by(CommodityPrice.timestamp.desc())
                 .limit(100)
             )
@@ -751,7 +757,7 @@ class RiskNetworkAnalyzer:
         if len(prices) < 20:
             return {"valid": False}
 
-        price_series = [float(p.price) for p in reversed(prices)]
+        price_series = [float(p.close) for p in reversed(prices)]
         returns = -np.diff(np.log(price_series))
 
         var_percentile = (1 - confidence_level) * 100

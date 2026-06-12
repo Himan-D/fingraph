@@ -108,19 +108,20 @@ class GPURiskEngine:
         VaR_α = inf{x: P(Loss > x) ≤ 1-α}
         """
         from db.postgres import AsyncSessionLocal
-        from db.postgres_models import CommodityPrice, StockQuote
+        from db.postgres_models import CommodityPrice, Commodity, StockQuote
         from sqlalchemy import select, desc
         
         prices = []
         
         async with AsyncSessionLocal() as session:
             result = await session.execute(
-                select(CommodityPrice)
-                .where(CommodityPrice.symbol == symbol)
+                select(CommodityPrice.price)
+                .join(Commodity, Commodity.id == CommodityPrice.commodity_id)
+                .where(Commodity.symbol == symbol)
                 .order_by(desc(CommodityPrice.timestamp))
                 .limit(252)
             )
-            prices = [float(p.price) for p in result.scalars().all()]
+            prices = [float(p) for p in result.scalars().all()]
         
         if len(prices) < 30:
             return {"error": "insufficient_data"}
@@ -172,7 +173,7 @@ class GPURiskEngine:
         weights = weights / weights.sum()
         
         from db.postgres import AsyncSessionLocal
-        from db.postgres_models import CommodityPrice, StockQuote
+        from db.postgres_models import CommodityPrice, Commodity, StockQuote
         from sqlalchemy import select, desc
         
         returns_matrix = []
@@ -180,12 +181,13 @@ class GPURiskEngine:
         async with AsyncSessionLocal() as session:
             for symbol in symbols:
                 result = await session.execute(
-                    select(CommodityPrice)
-                    .where(CommodityPrice.symbol == symbol)
+                    select(CommodityPrice.price)
+                    .join(Commodity, Commodity.id == CommodityPrice.commodity_id)
+                    .where(Commodity.symbol == symbol)
                     .order_by(desc(CommodityPrice.timestamp))
                     .limit(252)
                 )
-                prices = [float(p.price) for p in result.scalars().all()]
+                prices = [float(p) for p in result.scalars().all()]
                 
                 if len(prices) > 1:
                     returns = np.diff(np.log(prices))
@@ -234,17 +236,21 @@ class GPURiskEngine:
         }
         
         from db.postgres import AsyncSessionLocal
-        from db.postgres_models import CommodityPrice
+        from db.postgres_models import CommodityPrice, Commodity
         from sqlalchemy import select, desc
         
         async with AsyncSessionLocal() as session:
             result = await session.execute(
-                select(CommodityPrice)
-                .where(CommodityPrice.symbol == symbol)
+                select(CommodityPrice.price)
+                .join(Commodity, Commodity.id == CommodityPrice.commodity_id)
+                .where(Commodity.symbol == symbol)
                 .order_by(desc(CommodityPrice.timestamp))
                 .limit(1)
             )
-            price = float(result.scalar_one_or_none().price)
+            price_row = result.scalar_one_or_none()
+            if price_row is None:
+                return {"error": "no data for symbol"}
+            price = float(price_row)
         
         results = {}
         for name, params in (scenarios or default_scenarios).items():
@@ -288,17 +294,21 @@ class GPURiskEngine:
         """
         if current_price is None:
             from db.postgres import AsyncSessionLocal
-            from db.postgres_models import CommodityPrice
+            from db.postgres_models import CommodityPrice, Commodity
             from sqlalchemy import select, desc
             
             async with AsyncSessionLocal() as session:
                 result = await session.execute(
-                    select(CommodityPrice)
-                    .where(CommodityPrice.symbol == symbol)
+                    select(CommodityPrice.price)
+                    .join(Commodity, Commodity.id == CommodityPrice.commodity_id)
+                    .where(Commodity.symbol == symbol)
                     .order_by(desc(CommodityPrice.timestamp))
                     .limit(1)
                 )
-                current_price = float(result.scalar_one_or_none().price)
+                price_row = result.scalar_one_or_none()
+                if price_row is None:
+                    raise ValueError(f"No price data for {symbol}")
+                current_price = float(price_row)
         
         if volatility is None:
             vol = await self._get_historical_volatility(symbol) / 100
@@ -362,17 +372,18 @@ class GPURiskEngine:
     async def _get_historical_volatility(self, symbol: str) -> float:
         """Get historical volatility"""
         from db.postgres import AsyncSessionLocal
-        from db.postgres_models import CommodityPrice
+        from db.postgres_models import CommodityPrice, Commodity
         from sqlalchemy import select, desc
         
         async with AsyncSessionLocal() as session:
             result = await session.execute(
-                select(CommodityPrice)
-                .where(CommodityPrice.symbol == symbol)
+                select(CommodityPrice.price)
+                .join(Commodity, Commodity.id == CommodityPrice.commodity_id)
+                .where(Commodity.symbol == symbol)
                 .order_by(desc(CommodityPrice.timestamp))
                 .limit(60)
             )
-            prices = [float(p.price) for p in result.scalars().all()]
+            prices = [float(p) for p in result.scalars().all()]
         
         if len(prices) < 2:
             return 20.0

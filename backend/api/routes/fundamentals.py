@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, List
 from datetime import datetime
 
@@ -166,21 +166,58 @@ async def get_company(symbol: str):
     """Get company profile"""
     symbol = symbol.upper()
 
-    if symbol in SAMPLE_FUNDAMENTALS:
-        return {"success": True, "data": SAMPLE_FUNDAMENTALS[symbol]}
+    try:
+        from db.postgres import AsyncSessionLocal
+        from db.postgres_models import Company
+        from sqlalchemy import select
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Company).where(Company.symbol == symbol)
+            )
+            company = result.scalars().first()
+            if company:
+                return {
+                    "success": True,
+                    "data": {
+                        "symbol": company.symbol,
+                        "name": company.name,
+                        "sector": company.sector,
+                        "industry": company.industry,
+                        "market_cap": company.market_cap,
+                        "listing_date": str(company.listing_date) if company.listing_date else None,
+                        "face_value": company.face_value,
+                    },
+                    "source": "db",
+                }
+    except Exception:
+        if symbol in SAMPLE_FUNDAMENTALS:
+            data = SAMPLE_FUNDAMENTALS[symbol]
+            return {
+                "success": True,
+                "data": {
+                    "symbol": symbol,
+                    "name": data.get("name"),
+                    "sector": data.get("sector"),
+                    "industry": data.get("industry"),
+                    "market_cap": data.get("market_cap"),
+                    "listing_date": None,
+                    "face_value": None,
+                },
+                "source": "sample",
+            }
 
     return {
         "success": True,
-        "data": {"symbol": symbol, "name": f"{symbol} Ltd", "sector": "Other"},
+        "data": {"symbol": symbol, "name": None, "sector": None, "industry": None, "market_cap": None, "listing_date": None, "face_value": None},
     }
 
 
 @router.get("/fundamentals/{symbol}")
 async def get_fundamentals(symbol: str):
-    """Get financial ratios and metrics — DB first, SAMPLE_FUNDAMENTALS fallback"""
+    """Get financial ratios and metrics — DB first, SAMPLE_FUNDAMENTALS only on DB exception"""
     symbol = symbol.upper()
 
-    # Try DB first
     try:
         from db.postgres import AsyncSessionLocal
         from db.postgres_models import Fundamental, Company
@@ -199,18 +236,31 @@ async def get_fundamentals(symbol: str):
                     "success": True,
                     "data": {
                         "symbol": symbol,
-                        "pe": fund.pe_ratio,
-                        "pb": fund.pb_ratio,
+                        "pe": fund.pe,
+                        "pb": fund.pb,
                         "roe": fund.roe,
                         "roce": fund.roce,
-                        "debt_equity": fund.debt_to_equity,
+                        "debt_equity": fund.debt_equity,
                         "dividend_yield": fund.dividend_yield,
                         "eps": fund.eps,
-                        "book_value": fund.book_value,
-                        "market_cap": fund.market_cap,
+                        "revenue": fund.revenue,
+                        "profit": fund.profit,
+                        "book_value": None,
+                        "market_cap": None,
                     },
                     "source": "db",
                 }
+            return {
+                "success": True,
+                "data": {
+                    "symbol": symbol,
+                    "pe": None, "pb": None, "roe": None, "roce": None,
+                    "debt_equity": None, "dividend_yield": None,
+                    "eps": None, "revenue": None, "profit": None,
+                    "book_value": None, "market_cap": None,
+                },
+                "source": "unavailable",
+            }
     except Exception:
         pass
 
@@ -227,26 +277,22 @@ async def get_fundamentals(symbol: str):
                 "debt_equity": data.get("debt_equity"),
                 "dividend_yield": data.get("dividend_yield"),
                 "eps": data.get("eps"),
+                "revenue": data.get("revenue"),
+                "profit": data.get("profit"),
                 "book_value": data.get("book_value"),
                 "market_cap": data.get("market_cap"),
             },
             "source": "sample",
         }
 
-    # Unknown symbol — return nulls, not fake randoms
     return {
         "success": True,
         "data": {
             "symbol": symbol,
-            "pe": None,
-            "pb": None,
-            "roe": None,
-            "roce": None,
-            "debt_equity": None,
-            "dividend_yield": None,
-            "eps": None,
-            "book_value": None,
-            "market_cap": None,
+            "pe": None, "pb": None, "roe": None, "roce": None,
+            "debt_equity": None, "dividend_yield": None,
+            "eps": None, "revenue": None, "profit": None,
+            "book_value": None, "market_cap": None,
         },
         "source": "unavailable",
     }
@@ -265,16 +311,34 @@ async def get_quarterly(symbol: str, limit: int = 8):
     base_revenue = 100000
     base_profit = 10000
 
-    if symbol in SAMPLE_FUNDAMENTALS:
-        base_revenue = SAMPLE_FUNDAMENTALS[symbol].get("revenue", 100000) / 4
-        base_profit = SAMPLE_FUNDAMENTALS[symbol].get("profit", 10000) / 4
+    try:
+        from db.postgres import AsyncSessionLocal
+        from db.postgres_models import Fundamental, Company
+        from sqlalchemy import select
 
-    # Deterministic seasonal variation by quarter index (no random)
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Fundamental)
+                .join(Company, Company.id == Fundamental.company_id)
+                .where(Company.symbol == symbol)
+                .limit(1)
+            )
+            fund = result.scalars().first()
+            if fund:
+                base_revenue = fund.revenue / 4 if fund.revenue else 100000
+                base_profit = fund.profit / 4 if fund.profit else 10000
+            else:
+                return {"success": True, "data": []}
+    except Exception:
+        if symbol in SAMPLE_FUNDAMENTALS:
+            base_revenue = SAMPLE_FUNDAMENTALS[symbol].get("revenue", 100000) / 4
+            base_profit = SAMPLE_FUNDAMENTALS[symbol].get("profit", 10000) / 4
+
     seasonal = [1.05, 0.98, 1.02, 1.08, 1.03, 0.97, 1.01, 1.06]
     results = []
     for i, quarter in enumerate(quarters[:limit]):
         factor = seasonal[i % len(seasonal)]
-        growth_factor = max(1 - i * 0.03, 0.70)  # monotonically declining historical
+        growth_factor = max(1 - i * 0.03, 0.70)
         revenue = round(base_revenue * growth_factor * factor, 2)
         profit = round(base_profit * growth_factor * factor, 2)
         eps = round(profit / 100, 2)
@@ -295,17 +359,39 @@ async def get_shareholding(symbol: str, limit: int = 4):
     """Get shareholding pattern"""
     symbol = symbol.upper()
 
-    if symbol in SAMPLE_FUNDAMENTALS:
-        data = SAMPLE_FUNDAMENTALS[symbol]
-        promoter = data.get("promoter_holding", 50.0)
-        fii = data.get("fii_holding", 20.0)
-        dii = data.get("dii_holding", 15.0)
-    else:
-        promoter, fii, dii = 50.0, 20.0, 15.0
+    promoter = 50.0
+    fii = 20.0
+    dii = 15.0
+
+    try:
+        from db.postgres import AsyncSessionLocal
+        from db.postgres_models import Shareholding, Company
+        from sqlalchemy import select
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Shareholding)
+                .join(Company, Company.id == Shareholding.company_id)
+                .where(Company.symbol == symbol)
+                .order_by(Shareholding.date.desc())
+                .limit(1)
+            )
+            holding = result.scalars().first()
+            if holding:
+                promoter = holding.promoter or 50.0
+                fii = holding.fii or 20.0
+                dii = holding.dii or 15.0
+            else:
+                return {"success": True, "data": []}
+    except Exception:
+        if symbol in SAMPLE_FUNDAMENTALS:
+            data = SAMPLE_FUNDAMENTALS[symbol]
+            promoter = data.get("promoter_holding", 50.0)
+            fii = data.get("fii_holding", 20.0)
+            dii = data.get("dii_holding", 15.0)
 
     public = round(max(100.0 - promoter - fii - dii, 0.0), 2)
 
-    # Deterministic small quarterly shifts — no random
     deltas = [(0, 0, 0), (-0.3, 0.5, -0.2), (-0.6, 1.1, -0.4), (-1.0, 1.8, -0.7)]
     quarter_labels = ["Q3 2025", "Q2 2025", "Q1 2025", "Q4 2024"]
 
@@ -424,3 +510,45 @@ async def get_corporate_actions(
         actions = [a for a in actions if a["type"] == action_type.upper()]
 
     return {"success": True, "data": actions}
+
+
+@router.post("/fundamentals/refresh")
+async def refresh_all():
+    """Trigger batch fundamentals refresh from Screener.in"""
+    try:
+        from core.pipelines.fundamentals_pipeline import refresh_all_fundamentals
+        results = await refresh_all_fundamentals()
+        success_count = sum(1 for r in results if r.get("success"))
+        return {
+            "success": True,
+            "data": {
+                "total": len(results),
+                "succeeded": success_count,
+                "failed": len(results) - success_count,
+                "results": results,
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/fundamentals/refresh/{symbol}")
+async def refresh_single(symbol: str):
+    """Trigger fundamentals refresh for a single stock"""
+    try:
+        from core.pipelines.fundamentals_pipeline import refresh_company_fundamentals
+        result = await refresh_company_fundamentals(symbol.upper())
+        return {"success": result.get("success", False), "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/fundamentals/refresh/sector")
+async def refresh_sector(sector: str = Query(..., description="Sector name")):
+    """Trigger fundamentals refresh for all companies in a sector"""
+    try:
+        from core.pipelines.fundamentals_pipeline import refresh_sector_fundamentals
+        results = await refresh_sector_fundamentals(sector)
+        return {"success": True, "data": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

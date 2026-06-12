@@ -12,13 +12,14 @@ async def get_risk_analysis(symbol: str):
     engine = await get_risk_engine()
     
     from db.postgres import AsyncSessionLocal
-    from db.postgres_models import CommodityPrice
+    from db.postgres_models import CommodityPrice, Commodity
     from sqlalchemy import select, desc
     
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(CommodityPrice)
-            .where(CommodityPrice.symbol == symbol.upper())
+            .join(Commodity, Commodity.id == CommodityPrice.commodity_id)
+            .where(Commodity.symbol == symbol.upper())
             .order_by(desc(CommodityPrice.timestamp))
             .limit(1)
         )
@@ -53,13 +54,14 @@ async def get_monte_carlo(
     
     if price == 0:
         from db.postgres import AsyncSessionLocal
-        from db.postgres_models import CommodityPrice
+        from db.postgres_models import CommodityPrice, Commodity
         from sqlalchemy import select, desc
         
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 select(CommodityPrice)
-                .where(CommodityPrice.symbol == symbol.upper())
+                .join(Commodity, Commodity.id == CommodityPrice.commodity_id)
+                .where(Commodity.symbol == symbol.upper())
                 .order_by(desc(CommodityPrice.timestamp))
                 .limit(1)
             )

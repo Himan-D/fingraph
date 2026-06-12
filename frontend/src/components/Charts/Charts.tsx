@@ -585,12 +585,12 @@ export default function Charts() {
             <div className="h-4 w-px" style={{ backgroundColor: chartColors.border }} />
             <div><span className="text-[10px]" style={{ color: chartColors.text }}>Vol</span> <span className="text-xs font-mono ml-1">{((quote.volume || 0) / 1000000).toFixed(1)}M</span></div>
             <div className="h-4 w-px" style={{ backgroundColor: chartColors.border }} />
-            <div><span className="text-[10px]" style={{ color: chartColors.text }}>Mkt Cap</span> <span className="text-xs font-mono ml-1">{(quote.market_cap / 1000000000).toFixed(1)}B</span></div>
+            <div><span className="text-[10px]" style={{ color: chartColors.text }}>Mkt Cap</span> <span className="text-xs font-mono ml-1">{quote.market_cap ? (quote.market_cap / 1000000000).toFixed(1) + 'B' : 'N/A'}</span></div>
             <div className="h-4 w-px" style={{ backgroundColor: chartColors.border }} />
-            <div><span className="text-[10px]" style={{ color: chartColors.text }}>P/E</span> <span className="text-xs font-mono ml-1">{quote.pe_ratio || 'N/A'}</span></div>
+            <div><span className="text-[10px]" style={{ color: chartColors.text }}>P/E</span> <span className="text-xs font-mono ml-1">{quote.pe_ratio ?? 'N/A'}</span></div>
             <div className="h-4 w-px" style={{ backgroundColor: chartColors.border }} />
-            <div><span className="text-[10px]" style={{ color: chartColors.success }}>52W H</span> <span className="text-xs font-mono ml-1">{quote.week52_high?.toFixed(2)}</span></div>
-            <div><span className="text-[10px]" style={{ color: chartColors.danger }}>52W L</span> <span className="text-xs font-mono ml-1">{quote.week52_low?.toFixed(2)}</span></div>
+            <div><span className="text-[10px]" style={{ color: chartColors.success }}>52W H</span> <span className="text-xs font-mono ml-1">{quote.week52_high?.toFixed(2) ?? 'N/A'}</span></div>
+            <div><span className="text-[10px]" style={{ color: chartColors.danger }}>52W L</span> <span className="text-xs font-mono ml-1">{quote.week52_low?.toFixed(2) ?? 'N/A'}</span></div>
           </>
         )}
       </div>

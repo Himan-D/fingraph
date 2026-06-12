@@ -240,6 +240,7 @@ async def get_trending():
                     Company.name,
                     func.max(StockQuote.close).label("price"),
                     func.max(StockQuote.volume).label("volume"),
+                    (func.max(StockQuote.close) - func.min(StockQuote.open)).label("change"),
                 )
                 .join(StockQuote, Company.id == StockQuote.company_id)
                 .group_by(Company.id)
@@ -249,11 +250,14 @@ async def get_trending():
 
             trending = []
             for row in result:
+                price = float(row.price) if row.price else 0
+                change = float(row.change) if row.change else 0
                 trending.append(
                     {
                         "symbol": row.symbol,
                         "name": row.name or row.symbol,
-                        "price": float(row.price) if row.price else 0,
+                        "price": price,
+                        "change": change,
                         "volume": row.volume or 0,
                     }
                 )

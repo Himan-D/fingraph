@@ -1,4 +1,4 @@
-"""Add commodity tables
+"""Add commodity, social, and pipeline tables
 
 Revision ID: 0002
 Revises: 0001
@@ -30,26 +30,20 @@ def upgrade() -> None:
     op.create_table(
         "commodity_prices",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column(
-            "commodity_id",
-            sa.Integer,
-            sa.ForeignKey("commodities.id", ondelete="CASCADE"),
-            nullable=False,
-            index=True,
-        ),
+        sa.Column("commodity_id", sa.Integer, index=True),
         sa.Column("timestamp", sa.DateTime, nullable=False, index=True),
-        sa.Column("open", sa.Numeric(12, 2)),
-        sa.Column("high", sa.Numeric(12, 2)),
-        sa.Column("low", sa.Numeric(12, 2)),
-        sa.Column("close", sa.Numeric(12, 2)),
-        sa.Column("settlement", sa.Numeric(12, 2)),
-        sa.Column("previous_close", sa.Numeric(12, 2)),
-        sa.Column("change", sa.Numeric(12, 2)),
-        sa.Column("change_pct", sa.Numeric(8, 2)),
+        sa.Column("open", sa.Float),
+        sa.Column("high", sa.Float),
+        sa.Column("low", sa.Float),
+        sa.Column("close", sa.Float),
+        sa.Column("settlement", sa.Float),
+        sa.Column("previous_close", sa.Float),
+        sa.Column("change", sa.Float),
+        sa.Column("change_pct", sa.Float),
         sa.Column("volume", sa.BigInteger),
         sa.Column("open_interest", sa.BigInteger),
-        sa.Column("delivery", sa.Numeric(8, 2)),
-        sa.Column("turnover", sa.Numeric(12, 2)),
+        sa.Column("delivery", sa.Float),
+        sa.Column("turnover", sa.Float),
         sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
     )
 
@@ -73,7 +67,7 @@ def upgrade() -> None:
         sa.Column("commodity_symbol", sa.String(20), index=True),
         sa.Column("date", sa.Date, index=True),
         sa.Column("source", sa.String(20)),
-        sa.Column("sentiment_score", sa.Numeric(8, 2)),
+        sa.Column("sentiment_score", sa.Float),
         sa.Column("mention_count", sa.Integer, default=0),
         sa.Column("bullish_count", sa.Integer, default=0),
         sa.Column("bearish_count", sa.Integer, default=0),
@@ -116,15 +110,56 @@ def upgrade() -> None:
         sa.Column("symbol", sa.String(20), index=True),
         sa.Column("date", sa.Date, index=True),
         sa.Column("source", sa.String(20)),
-        sa.Column("sentiment_score", sa.Numeric(8, 2)),
+        sa.Column("sentiment_score", sa.Float),
         sa.Column("mention_count", sa.Integer, default=0),
         sa.Column("bullish_count", sa.Integer, default=0),
         sa.Column("bearish_count", sa.Integer, default=0),
         sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
     )
 
+    op.create_table(
+        "index_quotes",
+        sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+        sa.Column("symbol", sa.String(20), index=True),
+        sa.Column("name", sa.String(100)),
+        sa.Column("price", sa.Float),
+        sa.Column("change", sa.Float),
+        sa.Column("pct_change", sa.Float),
+        sa.Column("timestamp", sa.DateTime, nullable=False, index=True),
+        sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
+    )
+
+    op.create_table(
+        "option_chain_records",
+        sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+        sa.Column("symbol", sa.String(20), index=True),
+        sa.Column("expiry_date", sa.Date),
+        sa.Column("strike_price", sa.Float),
+        sa.Column("option_type", sa.String(5)),
+        sa.Column("last_price", sa.Float),
+        sa.Column("open_interest", sa.BigInteger),
+        sa.Column("volume", sa.BigInteger),
+        sa.Column("iv", sa.Float),
+        sa.Column("delta", sa.Float),
+        sa.Column("gamma", sa.Float),
+        sa.Column("theta", sa.Float),
+        sa.Column("vega", sa.Float),
+        sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
+    )
+
+    op.create_table(
+        "stock_inventory",
+        sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+        sa.Column("symbol", sa.String(20), unique=True, nullable=False, index=True),
+        sa.Column("is_active", sa.Integer, default=1),
+        sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
+    )
+
 
 def downgrade() -> None:
+    op.drop_table("stock_inventory")
+    op.drop_table("option_chain_records")
+    op.drop_table("index_quotes")
     op.drop_table("social_sentiment")
     op.drop_table("reddit_posts")
     op.drop_table("twitter_posts")

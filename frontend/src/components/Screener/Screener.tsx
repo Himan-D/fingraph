@@ -60,6 +60,12 @@ export default function Screener() {
     runScreener()
   }, [])
 
+  useEffect(() => {
+    if (results.length > 0) {
+      runScreener()
+    }
+  }, [sortBy, sortOrder])
+
   const fetchTemplates = async () => {
     try {
       const response = await axios.get('/api/v1/screen/templates')
@@ -309,7 +315,7 @@ export default function Screener() {
               <span className="text-sm text-terminal-muted">Sort by:</span>
               <select
                 value={sortBy}
-                onChange={(e) => { setSortBy(e.target.value); setTimeout(runScreener, 100) }}
+                onChange={(e) => setSortBy(e.target.value)}
                 className="px-3 py-1 bg-terminal-bg border border-terminal-border rounded text-sm"
               >
                 <option value="market_cap">Market Cap</option>
@@ -320,7 +326,7 @@ export default function Screener() {
                 <option value="roe">ROE</option>
               </select>
               <button
-                onClick={() => { setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc'); setTimeout(runScreener, 100) }}
+                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
                 className="p-1 hover:bg-terminal-border rounded"
               >
                 <ArrowUpDown size={16} className={sortOrder === 'asc' ? 'rotate-180' : ''} />

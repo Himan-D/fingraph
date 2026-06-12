@@ -25,6 +25,7 @@ class Company(Base):
     sector = Column(String(100))
     industry = Column(String(200))
     market_cap = Column(Float)
+    description = Column(Text)
     listing_date = Column(Date)
     face_value = Column(Float, default=10.0)
     created_at = Column(DateTime, server_default=func.now())
@@ -65,6 +66,7 @@ class Fundamental(Base):
     current_ratio = Column(Float)
     gross_margin = Column(Float)
     net_margin = Column(Float)
+    dividend_yield = Column(Float)
     created_at = Column(DateTime, server_default=func.now())
 
 
@@ -253,3 +255,118 @@ class CommoditySentiment(Base):
     bullish_count = Column(Integer, default=0)
     bearish_count = Column(Integer, default=0)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class IndexQuote(Base):
+    __tablename__ = "index_quotes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String(20), index=True)
+    name = Column(String(100))
+    price = Column(Float)
+    change = Column(Float)
+    pct_change = Column(Float)
+    timestamp = Column(DateTime, nullable=False, index=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class OptionChainRecord(Base):
+    __tablename__ = "option_chain_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String(20), index=True)
+    expiry_date = Column(Date)
+    strike_price = Column(Float)
+    option_type = Column(String(5))
+    last_price = Column(Float)
+    open_interest = Column(BigInteger)
+    volume = Column(BigInteger)
+    iv = Column(Float)
+    delta = Column(Float)
+    gamma = Column(Float)
+    theta = Column(Float)
+    vega = Column(Float)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class StockInventory(Base):
+    __tablename__ = "stock_inventory"
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String(20), unique=True, nullable=False, index=True)
+    is_active = Column(Integer, default=1)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    name = Column(String(200))
+    plan = Column(String(20), default="FREE")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True)
+    title = Column(String(500))
+    symbol = Column(String(20))
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, index=True, nullable=False)
+    role = Column(String(20), nullable=False)
+    content = Column(Text)
+    tool_calls = Column(JSON)
+    tool_results = Column(JSON)
+    tokens_used = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class AIAlert(Base):
+    __tablename__ = "ai_alerts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True)
+    symbol = Column(String(20), index=True)
+    alert_type = Column(String(50))
+    severity = Column(String(20))
+    title = Column(String(500))
+    summary = Column(Text)
+    data = Column(JSON)
+    is_read = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class SavedScreener(Base):
+    __tablename__ = "saved_screeners"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True)
+    title = Column(String(200), nullable=False)
+    config = Column(JSON, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class AgentMemory(Base):
+    __tablename__ = "agent_memory"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True)
+    memory_type = Column(String(50), index=True)
+    key = Column(String(200), index=True)
+    data = Column(JSON)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

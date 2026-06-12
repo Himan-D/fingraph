@@ -18,117 +18,126 @@ def upgrade() -> None:
         "companies",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
         sa.Column("symbol", sa.String(20), unique=True, nullable=False, index=True),
-        sa.Column("name", sa.String(200)),
-        sa.Column("sector", sa.String(100), index=True),
-        sa.Column("industry", sa.String(100)),
-        sa.Column("market_cap", sa.Numeric(20, 2)),
+        sa.Column("nse_code", sa.String(20)),
+        sa.Column("bse_code", sa.String(20)),
+        sa.Column("name", sa.String(500)),
+        sa.Column("isin", sa.String(50)),
+        sa.Column("sector", sa.String(100)),
+        sa.Column("industry", sa.String(200)),
+        sa.Column("market_cap", sa.Float),
         sa.Column("description", sa.Text),
-        sa.Column("isin", sa.String(20), unique=True),
-        sa.Column("nse_symbol", sa.String(20)),
-        sa.Column("bse_code", sa.String(10)),
+        sa.Column("listing_date", sa.Date),
+        sa.Column("face_value", sa.Float, default=10.0),
         sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime, server_default=sa.func.now(), onupdate=sa.func.now()),
-    )
-
-    op.create_table(
-        "stock_quotes",
-        sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column("company_id", sa.Integer, sa.ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("timestamp", sa.DateTime, nullable=False),
-        sa.Column("open", sa.Numeric(12, 2)),
-        sa.Column("high", sa.Numeric(12, 2)),
-        sa.Column("low", sa.Numeric(12, 2)),
-        sa.Column("close", sa.Numeric(12, 2)),
-        sa.Column("volume", sa.BigInteger),
-        sa.Column("vwap", sa.Numeric(12, 2)),
-        sa.Column("oi", sa.BigInteger),
-    )
-    op.create_index("ix_stock_quotes_company_ts", "stock_quotes", ["company_id", "timestamp"])
-
-    op.create_table(
-        "fundamentals",
-        sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column("company_id", sa.Integer, sa.ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("pe_ratio", sa.Numeric(10, 2)),
-        sa.Column("pb_ratio", sa.Numeric(10, 2)),
-        sa.Column("roe", sa.Numeric(10, 2)),
-        sa.Column("roce", sa.Numeric(10, 2)),
-        sa.Column("debt_to_equity", sa.Numeric(10, 2)),
-        sa.Column("dividend_yield", sa.Numeric(10, 2)),
-        sa.Column("eps", sa.Numeric(12, 2)),
-        sa.Column("book_value", sa.Numeric(12, 2)),
-        sa.Column("market_cap", sa.Numeric(20, 2)),
-        sa.Column("revenue", sa.Numeric(20, 2)),
-        sa.Column("net_profit", sa.Numeric(20, 2)),
         sa.Column("updated_at", sa.DateTime, server_default=sa.func.now()),
     )
 
     op.create_table(
-        "shareholdings",
+        "stock_quotes",
+        sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
+        sa.Column("company_id", sa.Integer, index=True),
+        sa.Column("timestamp", sa.DateTime, nullable=False, index=True),
+        sa.Column("open", sa.Float),
+        sa.Column("high", sa.Float),
+        sa.Column("low", sa.Float),
+        sa.Column("close", sa.Float),
+        sa.Column("volume", sa.BigInteger),
+        sa.Column("delivery", sa.BigInteger),
+        sa.Column("vwap", sa.Float),
+        sa.Column("turnover", sa.Float),
+    )
+
+    op.create_table(
+        "fundamentals",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column("company_id", sa.Integer, sa.ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("quarter", sa.String(20)),
-        sa.Column("promoter", sa.Numeric(7, 4)),
-        sa.Column("fii", sa.Numeric(7, 4)),
-        sa.Column("dii", sa.Numeric(7, 4)),
-        sa.Column("public", sa.Numeric(7, 4)),
+        sa.Column("company_id", sa.Integer, index=True),
+        sa.Column("quarter", sa.String(10)),
+        sa.Column("fiscal_year", sa.Integer),
+        sa.Column("revenue", sa.Float),
+        sa.Column("profit", sa.Float),
+        sa.Column("eps", sa.Float),
+        sa.Column("pe", sa.Float),
+        sa.Column("pb", sa.Float),
+        sa.Column("roe", sa.Float),
+        sa.Column("roce", sa.Float),
+        sa.Column("debt_equity", sa.Float),
+        sa.Column("current_ratio", sa.Float),
+        sa.Column("gross_margin", sa.Float),
+        sa.Column("net_margin", sa.Float),
+        sa.Column("dividend_yield", sa.Float),
+        sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
+    )
+
+    op.create_table(
+        "shareholding",
+        sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+        sa.Column("company_id", sa.Integer, index=True),
+        sa.Column("date", sa.Date, nullable=False),
+        sa.Column("promoter", sa.Float),
+        sa.Column("fii", sa.Float),
+        sa.Column("dii", sa.Float),
+        sa.Column("public", sa.Float),
+        sa.Column("total_shares", sa.Float),
+        sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
     )
 
     op.create_table(
         "corporate_actions",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column("company_id", sa.Integer, sa.ForeignKey("companies.id", ondelete="CASCADE"), index=True),
+        sa.Column("company_id", sa.Integer, index=True),
         sa.Column("action_type", sa.String(50)),
-        sa.Column("ex_date", sa.DateTime),
-        sa.Column("record_date", sa.DateTime),
-        sa.Column("amount", sa.Numeric(12, 2)),
-        sa.Column("remarks", sa.Text),
+        sa.Column("record_date", sa.Date),
+        sa.Column("ex_date", sa.Date),
+        sa.Column("ratio", sa.String(50)),
+        sa.Column("price", sa.Float),
+        sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
     )
 
     op.create_table(
         "deals",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column("company_id", sa.Integer, sa.ForeignKey("companies.id", ondelete="CASCADE"), index=True),
+        sa.Column("company_id", sa.Integer, index=True),
+        sa.Column("deal_date", sa.Date),
         sa.Column("deal_type", sa.String(20)),
-        sa.Column("date", sa.DateTime),
-        sa.Column("buyer", sa.String(200)),
-        sa.Column("seller", sa.String(200)),
+        sa.Column("buyer_name", sa.String(500)),
+        sa.Column("seller_name", sa.String(500)),
         sa.Column("quantity", sa.BigInteger),
-        sa.Column("price", sa.Numeric(12, 2)),
-        sa.Column("value", sa.Numeric(20, 2)),
+        sa.Column("price", sa.Float),
+        sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
     )
 
     op.create_table(
         "mf_holdings",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column("company_id", sa.Integer, sa.ForeignKey("companies.id", ondelete="CASCADE"), index=True),
-        sa.Column("fund_name", sa.String(200)),
+        sa.Column("company_id", sa.Integer, index=True),
+        sa.Column("mf_name", sa.String(200)),
+        sa.Column("quarter", sa.String(10)),
+        sa.Column("year", sa.Integer),
         sa.Column("quantity", sa.BigInteger),
-        sa.Column("change_qty", sa.BigInteger),
-        sa.Column("quarter", sa.String(20)),
+        sa.Column("change_qq", sa.BigInteger),
+        sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
     )
 
     op.create_table(
         "news_articles",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column("title", sa.String(500), nullable=False),
-        sa.Column("url", sa.String(2000), unique=True),
-        sa.Column("source", sa.String(100)),
-        sa.Column("published_at", sa.DateTime),
+        sa.Column("headline", sa.Text),
         sa.Column("summary", sa.Text),
-        sa.Column("sentiment", sa.String(20), default="neutral"),
-        sa.Column("symbols", sa.JSON),
+        sa.Column("source", sa.String(100)),
+        sa.Column("url", sa.String(1000)),
+        sa.Column("published_at", sa.DateTime),
+        sa.Column("sentiment", sa.String(20)),
+        sa.Column("related_symbols", sa.JSON),
         sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index("ix_news_articles_published", "news_articles", ["published_at"])
 
     op.create_table(
         "watchlists",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column("name", sa.String(100), nullable=False),
-        sa.Column("symbols", sa.JSON, default=list),
+        sa.Column("user_id", sa.String(100)),
+        sa.Column("name", sa.String(100)),
+        sa.Column("symbols", sa.JSON),
         sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime, server_default=sa.func.now()),
     )
 
 
@@ -138,8 +147,7 @@ def downgrade() -> None:
     op.drop_table("mf_holdings")
     op.drop_table("deals")
     op.drop_table("corporate_actions")
-    op.drop_table("shareholdings")
+    op.drop_table("shareholding")
     op.drop_table("fundamentals")
-    op.drop_index("ix_stock_quotes_company_ts", table_name="stock_quotes")
     op.drop_table("stock_quotes")
     op.drop_table("companies")

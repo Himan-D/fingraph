@@ -41,12 +41,6 @@ def setup_neo4j():
             FOR (c:Company) ON (c.sector)
         """)
 
-        session.run("""
-            CREATE INDEX promoter_company IF NOT EXISTS
-            FOR (p:Promoter)-[r:PROMOTER_OF]->(c:Company)
-            ON r.holding
-        """)
-
         print("Neo4j constraints and indexes created successfully!")
 
     driver.close()
