@@ -194,7 +194,7 @@ class MonitoringService:
         services = await self._check_all_services()
 
         overall = "healthy"
-        if any(s.status == "down" for s in services):
+        if any(s.status == "degraded" for s in services):
             overall = "degraded"
         if any(s.status == "down" for s in services):
             overall = "down"

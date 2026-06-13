@@ -123,16 +123,16 @@ class CommodityPredictionModel:
         score += sentiment * 0.3
 
         mentions = features.get("mention_count", 0)
-        if mentions > 20:
-            score += 5
-        elif mentions > 50:
+        if mentions > 50:
             score += 10
+        elif mentions > 20:
+            score += 5
 
         news = features.get("news_count", 0)
-        if news > 10:
-            score += 3
-        elif news > 30:
+        if news > 30:
             score += 7
+        elif news > 10:
+            score += 3
 
         volume_trend = features.get("volume_trend", 0)
         if volume_trend > 0:

@@ -1,13 +1,12 @@
 import base64
 import io
 import logging
-import math
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta
 
 import numpy as np
-from sqlalchemy import select, desc, func, text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, desc
+from sqlalchemy import text
 
 from db.postgres import AsyncSessionLocal
 from db.postgres_models import (
@@ -649,9 +648,9 @@ async def tool_get_option_chain(symbol: str) -> Dict[str, Any]:
 
 async def tool_run_risk_analysis(symbol: str, method: str = "all") -> Dict[str, Any]:
     try:
-        from core.services.risk_engine import RiskEngine
+        from core.services.risk_engine import GPURiskEngine
 
-        engine = RiskEngine()
+        engine = GPURiskEngine()
         company = await _resolve_company(symbol)
         if not company:
             return {"error": f"Company not found: {symbol}"}
@@ -660,21 +659,23 @@ async def tool_run_risk_analysis(symbol: str, method: str = "all") -> Dict[str, 
 
         if method in ("var", "all"):
             try:
-                results["var"] = await engine.calculate_var(company.id)
+                results["var"] = await engine.var_calculation(company.symbol)
             except Exception as e:
                 results["var"] = {"error": str(e)}
 
         if method in ("monte_carlo", "all"):
             try:
+                quote = await _get_latest_quote(company.symbol)
+                current_price = float(quote.price) if quote else 100.0
                 results["monte_carlo"] = await engine.monte_carlo_simulation(
-                    company.id
+                    company.symbol, current_price
                 )
             except Exception as e:
                 results["monte_carlo"] = {"error": str(e)}
 
         if method in ("stress_test", "all"):
             try:
-                results["stress_test"] = await engine.stress_test(company.id)
+                results["stress_test"] = await engine.stress_test(company.symbol)
             except Exception as e:
                 results["stress_test"] = {"error": str(e)}
 
@@ -686,10 +687,10 @@ async def tool_run_risk_analysis(symbol: str, method: str = "all") -> Dict[str, 
 
 async def tool_get_company_graph(symbol: str, depth: int = 1) -> Dict[str, Any]:
     try:
-        from core.services.graph_service import GraphService
+        from core.services.graph_service import Neo4jGraph
 
-        gs = GraphService()
-        result = await gs.get_company_relationships(symbol, max_depth=depth)
+        gs = Neo4jGraph()
+        result = await gs.get_company_graph(symbol)
         return result
     except Exception as e:
         logger.error(f"get_company_graph error: {e}")
@@ -815,7 +816,7 @@ async def tool_get_trading_signals(symbol: str) -> Dict[str, Any]:
         from core.services.signals import SignalGenerator
 
         gen = SignalGenerator()
-        result = await gen.generate_signals(symbol)
+        result = await gen.generate_signal(symbol)
         return result
     except Exception as e:
         logger.error(f"get_trading_signals error: {e}")
@@ -1015,7 +1016,10 @@ def _calc_macd(prices: List[float]) -> tuple:
         ema12 = (p - ema12) * (2 / 13) + ema12
         ema26 = (p - ema26) * (2 / 27) + ema26
     macd_line = ema12 - ema26
-    return (macd_line, macd_line * 0.8)
+    signal_line = macd_line
+    for p in prices[26:]:
+        signal_line = (macd_line - signal_line) * (2 / 10) + signal_line
+    return (macd_line, signal_line)
 
 
 async def tool_backtest_strategy(

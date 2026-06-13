@@ -32,10 +32,14 @@ class Settings(BaseSettings):
     CRAWL4AI_URL: str = "http://localhost:11202"
 
     # Auth
-    JWT_SECRET: str = "fingraph-jwt-secret-change-me-in-production-2024"
+    JWT_SECRET: str = ""
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # Stripe
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
 
     # CORS
     CORS_ORIGINS: str = ""

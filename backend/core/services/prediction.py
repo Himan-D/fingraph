@@ -111,16 +111,16 @@ class PredictionModel:
             score += max(mentions * 0.3, -10)
 
         volume = features.get("social_volume", 0)
-        if volume > 100:
-            score += 5
-        elif volume > 500:
+        if volume > 500:
             score += 10
+        elif volume > 100:
+            score += 5
 
         news = features.get("news_count", 0)
-        if news > 10:
-            score += 5
-        elif news > 50:
+        if news > 50:
             score += 10
+        elif news > 10:
+            score += 5
 
         return max(0, min(100, score))
 

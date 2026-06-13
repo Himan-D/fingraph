@@ -11,7 +11,7 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-JWT_SECRET = getattr(settings, "JWT_SECRET", "fingraph-jwt-secret-change-me-in-production-2024")
+JWT_SECRET = getattr(settings, "JWT_SECRET", "") or "dev-only-insecure-key"
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7

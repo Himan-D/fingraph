@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 from datetime import datetime, timedelta, date
 from typing import Optional, Dict, List
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Ensure backend root is in path before kimi project
