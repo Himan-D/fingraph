@@ -5,17 +5,18 @@ import { useAuth } from "@/hooks/useAuth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
 import { toast } from "@/hooks/useToast"
 import Link from "next/link"
-import { TrendingUp, Chrome, Github } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { TrendingUp } from "lucide-react"
 
 export default function SignUpPage() {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
-  const { signUp, signInWithGoogle, signInWithGitHub } = useAuth()
+  const { signUp } = useAuth()
+  const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -24,9 +25,10 @@ export default function SignUpPage() {
       await signUp(email, password, name)
       toast({
         title: "Account created!",
-        description: "Check your email to confirm your account.",
+        description: "Welcome to TradeForge.",
         variant: "success",
       })
+      router.push("/dashboard")
     } catch (err: unknown) {
       toast({
         title: "Sign up failed",
@@ -52,80 +54,48 @@ export default function SignUpPage() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-4">
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              variant="outline"
-              onClick={() => signInWithGoogle()}
-              className="h-10"
-            >
-              <Chrome className="h-4 w-4 mr-2" />
-              Google
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => signInWithGitHub()}
-              className="h-10"
-            >
-              <Github className="h-4 w-4 mr-2" />
-              GitHub
-            </Button>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Full name</label>
+            <Input
+              placeholder="John Doe"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
           </div>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <Separator className="w-full" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">
-                Or continue with
-              </span>
-            </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Email</label>
+            <Input
+              type="email"
+              placeholder="name@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
           </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Password</label>
+            <Input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+            />
+          </div>
+          <Button type="submit" className="w-full h-10" disabled={loading}>
+            {loading ? "Creating account..." : "Create account"}
+          </Button>
+        </form>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Full name</label>
-              <Input
-                placeholder="John Doe"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Email</label>
-              <Input
-                type="email"
-                placeholder="name@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Password</label>
-              <Input
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={8}
-              />
-            </div>
-            <Button type="submit" className="w-full h-10" disabled={loading}>
-              {loading ? "Creating account..." : "Create account"}
-            </Button>
-          </form>
-
-          <p className="text-center text-sm text-muted-foreground">
-            Already have an account?{" "}
-            <Link href="/login" className="text-primary hover:underline">
-              Sign in
-            </Link>
-          </p>
-        </div>
+        <p className="text-center text-sm text-muted-foreground mt-4">
+          Already have an account?{" "}
+          <Link href="/login" className="text-primary hover:underline">
+            Sign in
+          </Link>
+        </p>
       </CardContent>
     </Card>
   )

@@ -1,20 +1,23 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import { useAuth } from "@/hooks/useAuth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
 import { toast } from "@/hooks/useToast"
 import Link from "next/link"
-import { TrendingUp, Chrome, Github } from "lucide-react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { TrendingUp } from "lucide-react"
 
-export default function LoginPage() {
+function LoginForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
-  const { signIn, signInWithGoogle, signInWithGitHub } = useAuth()
+  const { signIn } = useAuth()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const callback = searchParams.get("callback")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -22,6 +25,7 @@ export default function LoginPage() {
     try {
       await signIn(email, password)
       toast({ title: "Welcome back!", variant: "success" })
+      router.push(callback || "/dashboard")
     } catch (err: unknown) {
       toast({
         title: "Login failed",
@@ -45,71 +49,28 @@ export default function LoginPage() {
         <CardDescription>Sign in to your TradeForge account</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-4">
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              variant="outline"
-              onClick={() => signInWithGoogle()}
-              className="h-10"
-            >
-              <Chrome className="h-4 w-4 mr-2" />
-              Google
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => signInWithGitHub()}
-              className="h-10"
-            >
-              <Github className="h-4 w-4 mr-2" />
-              GitHub
-            </Button>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Email</label>
+            <Input type="email" placeholder="name@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </div>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <Separator className="w-full" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">
-                Or continue with
-              </span>
-            </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Password</label>
+            <Input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Email</label>
-              <Input
-                type="email"
-                placeholder="name@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Password</label>
-              <Input
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            <Button type="submit" className="w-full h-10" disabled={loading}>
-              {loading ? "Signing in..." : "Sign in"}
-            </Button>
-          </form>
-
-          <p className="text-center text-sm text-muted-foreground">
-            Don&apos;t have an account?{" "}
-            <Link href="/signup" className="text-primary hover:underline">
-              Sign up
-            </Link>
-          </p>
-        </div>
+          <Button type="submit" className="w-full h-10" disabled={loading}>
+            {loading ? "Signing in..." : "Sign in"}
+          </Button>
+        </form>
+        <p className="text-center text-sm text-muted-foreground mt-4">
+          Don&apos;t have an account?{" "}
+          <Link href="/signup" className="text-primary hover:underline">Sign up</Link>
+        </p>
       </CardContent>
     </Card>
   )
+}
+
+export default function LoginPage() {
+  return <Suspense><LoginForm /></Suspense>
 }

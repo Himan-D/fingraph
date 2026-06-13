@@ -51,7 +51,6 @@ export function TopNav({ onMenuClick }: TopNavProps) {
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 rounded-full outline-none">
               <Avatar className="h-8 w-8 cursor-pointer ring-2 ring-border hover:ring-primary transition-all">
-                <AvatarImage src={user?.avatar_url ?? ""} />
                 <AvatarFallback className="text-xs bg-primary/10 text-primary">
                   {initials}
                 </AvatarFallback>

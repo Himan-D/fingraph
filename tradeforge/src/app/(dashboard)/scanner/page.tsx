@@ -8,84 +8,87 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { DataTable, type Column } from "@/components/ui/data-table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ScanSearch, Search, TrendingUp, TrendingDown, Filter, Save, RefreshCw } from "lucide-react"
+import { TrendingUp, TrendingDown, Filter, RefreshCw } from "lucide-react"
+import { useScreener, useScreenerSectors, type ScreenerResult, type ScreenerFilters } from "@/hooks/useFingraph"
+import { formatCurrency } from "@/lib/utils"
+import { toast } from "@/hooks/useToast"
 
-const scanResults = [
-  { symbol: "NVDA", name: "NVIDIA Corporation", price: 892.5, change: 3.42, volume: 45.2, rsi: 62, signal: "bullish", marketCap: "2.2T" },
-  { symbol: "META", name: "Meta Platforms", price: 512.6, change: 2.15, volume: 18.7, rsi: 58, signal: "bullish", marketCap: "1.3T" },
-  { symbol: "AMD", name: "Advanced Micro Devices", price: 178.3, change: 4.81, volume: 32.1, rsi: 71, signal: "overbought", marketCap: "288B" },
-  { symbol: "SNOW", name: "Snowflake Inc.", price: 168.2, change: -1.25, volume: 8.4, rsi: 42, signal: "bearish", marketCap: "56B" },
-  { symbol: "PLTR", name: "Palantir Technologies", price: 24.8, change: 6.72, volume: 78.5, rsi: 75, signal: "overbought", marketCap: "52B" },
-  { symbol: "COIN", name: "Coinbase Global", price: 245.6, change: 3.88, volume: 12.3, rsi: 65, signal: "bullish", marketCap: "62B" },
-  { symbol: "TSLA", name: "Tesla Inc.", price: 245.8, change: -0.82, volume: 28.9, rsi: 48, signal: "neutral", marketCap: "782B" },
-  { symbol: "AAPL", name: "Apple Inc.", price: 198.45, change: 1.23, volume: 22.4, rsi: 55, signal: "neutral", marketCap: "3.02T" },
-  { symbol: "MSFT", name: "Microsoft Corporation", price: 425.3, change: 0.54, volume: 15.6, rsi: 52, signal: "neutral", marketCap: "3.16T" },
-  { symbol: "AMZN", name: "Amazon.com Inc.", price: 188.75, change: 1.85, volume: 19.8, rsi: 60, signal: "bullish", marketCap: "1.96T" },
+const presets: { name: string; filters: ScreenerFilters }[] = [
+  { name: "Large Cap Value", filters: { market_cap_min: 50000, pe_max: 20, dividend_yield_min: 2 } },
+  { name: "High Growth", filters: { revenue_growth_min: 15, roe_min: 15 } },
+  { name: "Low Debt", filters: { debt_equity_max: 0.5, roe_min: 12 } },
+  { name: "Dividend Kings", filters: { dividend_yield_min: 3, pe_max: 25 } },
 ]
 
-const presets = [
-  { name: "Momentum", filters: "Change > 3%, Volume > 10M" },
-  { name: "Oversold", filters: "RSI < 30, Volume > 5M" },
-  { name: "Breakout", filters: "Volume > 2x Avg, RSI > 60" },
-  { name: "High Volume", filters: "Volume > 50M, Market Cap > 10B" },
-]
-
-const columns: Column<(typeof scanResults)[0]>[] = [
+const columns: Column<ScreenerResult>[] = [
   { key: "symbol", header: "Symbol", render: (item) => <span className="font-medium">{item.symbol}</span> },
-  { key: "name", header: "Name", render: (item) => <span className="text-muted-foreground text-xs">{item.name}</span> },
-  { key: "price", header: "Price", render: (item) => `$${item.price.toFixed(2)}` },
+  { key: "name", header: "Name", render: (item) => <span className="text-muted-foreground text-xs max-w-[200px] truncate block">{item.name}</span> },
+  { key: "price", header: "Price", render: (item) => formatCurrency(item.price, "INR") },
   {
-    key: "change",
+    key: "pct_change",
     header: "Change",
     sortable: true,
     render: (item) => (
-      <span className={`flex items-center gap-1 text-sm font-medium ${item.change >= 0 ? "text-buy" : "text-sell"}`}>
-        {item.change >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-        {item.change >= 0 ? "+" : ""}{item.change}%
+      <span className={`flex items-center gap-1 text-sm font-medium ${item.pct_change >= 0 ? "text-buy" : "text-sell"}`}>
+        {item.pct_change >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+        {item.pct_change >= 0 ? "+" : ""}{item.pct_change.toFixed(2)}%
       </span>
     ),
   },
-  { key: "volume", header: "Volume (M)", render: (item) => item.volume.toFixed(1) },
+  { key: "sector", header: "Sector", render: (item) => <span className="text-xs">{item.sector}</span> },
   {
-    key: "rsi",
-    header: "RSI",
+    key: "pe_ratio",
+    header: "P/E",
     sortable: true,
-    render: (item) => (
-      <span className={
-        item.rsi >= 70 ? "text-sell" : item.rsi <= 30 ? "text-buy" : ""
-      }>{item.rsi}</span>
-    ),
+    render: (item) => item.pe_ratio?.toFixed(1) ?? "—",
   },
   {
-    key: "signal",
-    header: "Signal",
-    render: (item) => (
-      <Badge variant={
-        item.signal === "bullish" ? "success" :
-        item.signal === "bearish" ? "danger" :
-        item.signal === "overbought" ? "warning" : "secondary"
-      } className="capitalize">
-        {item.signal}
-      </Badge>
-    ),
+    key: "roe",
+    header: "ROE",
+    sortable: true,
+    render: (item) => item.roe ? `${item.roe.toFixed(1)}%` : "—",
   },
-  { key: "marketCap", header: "Market Cap" },
+  {
+    key: "debt_equity",
+    header: "D/E",
+    render: (item) => item.debt_equity?.toFixed(2) ?? "—",
+  },
+  {
+    key: "market_cap",
+    header: "Market Cap",
+    render: (item) => item.market_cap ? `₹${(item.market_cap / 100).toFixed(0)} Cr` : "—",
+  },
 ]
 
 export default function ScannerPage() {
+  const [filters, setFilters] = useState<ScreenerFilters>({ limit: 50, sort_by: "market_cap", sort_order: "desc" })
+  const [enabled, setEnabled] = useState(false)
+  const [activePreset, setActivePreset] = useState<string | null>(null)
+
+  const { data: screenerResult, isLoading, refetch } = useScreener(filters, enabled)
+  const { data: sectorsData } = useScreenerSectors()
+
+  const handleRun = () => setEnabled(true)
+
+  const applyPreset = (preset: typeof presets[0]) => {
+    setActivePreset(preset.name)
+    setFilters({ ...preset.filters, limit: 50, sort_by: "market_cap", sort_order: "desc" })
+    setEnabled(true)
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader
         title="Market Scanner"
-        description="Scan thousands of assets for trading opportunities"
+        description="Screen Indian stocks by fundamentals"
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" size="sm">
-              <Save className="h-4 w-4 mr-2" />
-              Save Scan
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
             </Button>
-            <Button size="sm" className="gap-2">
-              <RefreshCw className="h-4 w-4" />
+            <Button size="sm" onClick={handleRun}>
+              <Filter className="h-4 w-4 mr-2" />
               Scan Now
             </Button>
           </div>
@@ -96,56 +99,42 @@ export default function ScannerPage() {
       <GlassCard>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
           <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">Min Price</label>
-            <Input type="number" placeholder="0" />
+            <label className="text-xs font-medium text-muted-foreground">Min P/E</label>
+            <Input type="number" placeholder="0" value={filters.pe_min ?? ""} onChange={(e) => setFilters(f => ({ ...f, pe_min: e.target.value ? Number(e.target.value) : undefined }))} />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">Max Price</label>
-            <Input type="number" placeholder="10000" />
+            <label className="text-xs font-medium text-muted-foreground">Max P/E</label>
+            <Input type="number" placeholder="100" value={filters.pe_max ?? ""} onChange={(e) => setFilters(f => ({ ...f, pe_max: e.target.value ? Number(e.target.value) : undefined }))} />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">Min Volume</label>
-            <Input type="number" placeholder="1M" />
+            <label className="text-xs font-medium text-muted-foreground">Min ROE (%)</label>
+            <Input type="number" placeholder="0" value={filters.roe_min ?? ""} onChange={(e) => setFilters(f => ({ ...f, roe_min: e.target.value ? Number(e.target.value) : undefined }))} />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">Market Cap</label>
-            <Select>
-              <SelectTrigger>
-                <SelectValue placeholder="Any" />
-              </SelectTrigger>
+            <label className="text-xs font-medium text-muted-foreground">Sector</label>
+            <Select value={filters.sector ?? ""} onValueChange={(v) => setFilters(f => ({ ...f, sector: v || undefined }))}>
+              <SelectTrigger><SelectValue placeholder="Any" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="any">Any</SelectItem>
-                <SelectItem value="large">Large Cap (&gt;10B)</SelectItem>
-                <SelectItem value="mid">Mid Cap (2B-10B)</SelectItem>
-                <SelectItem value="small">Small Cap (&lt;2B)</SelectItem>
+                <SelectItem value="all">Any</SelectItem>
+                {sectorsData?.map((s: string) => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">RSI Range</label>
-            <Select>
-              <SelectTrigger>
-                <SelectValue placeholder="Any" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="any">Any</SelectItem>
-                <SelectItem value="oversold">Oversold (&lt;30)</SelectItem>
-                <SelectItem value="neutral">Neutral (30-70)</SelectItem>
-                <SelectItem value="overbought">Overbought (&gt;70)</SelectItem>
-              </SelectContent>
-            </Select>
+            <label className="text-xs font-medium text-muted-foreground">Max D/E</label>
+            <Input type="number" placeholder="1.0" value={filters.debt_equity_max ?? ""} onChange={(e) => setFilters(f => ({ ...f, debt_equity_max: e.target.value ? Number(e.target.value) : undefined }))} />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">Signal</label>
-            <Select>
-              <SelectTrigger>
-                <SelectValue placeholder="Any" />
-              </SelectTrigger>
+            <label className="text-xs font-medium text-muted-foreground">Sort By</label>
+            <Select value={filters.sort_by ?? "market_cap"} onValueChange={(v) => setFilters(f => ({ ...f, sort_by: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="any">Any</SelectItem>
-                <SelectItem value="bullish">Bullish</SelectItem>
-                <SelectItem value="bearish">Bearish</SelectItem>
-                <SelectItem value="neutral">Neutral</SelectItem>
+                <SelectItem value="market_cap">Market Cap</SelectItem>
+                <SelectItem value="pe_ratio">P/E</SelectItem>
+                <SelectItem value="roe">ROE</SelectItem>
+                <SelectItem value="pct_change">Change %</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -158,7 +147,12 @@ export default function ScannerPage() {
         {presets.map((p) => (
           <button
             key={p.name}
-            className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border border-border bg-muted/30 text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+            onClick={() => applyPreset(p)}
+            className={`inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border transition-colors ${
+              activePreset === p.name
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border bg-muted/30 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            }`}
           >
             <Filter className="h-3 w-3" />
             {p.name}
@@ -170,9 +164,24 @@ export default function ScannerPage() {
       <GlassCard>
         <GlassCardHeader>
           <GlassCardTitle>Scan Results</GlassCardTitle>
-          <Badge variant="secondary">{scanResults.length} results</Badge>
+          <Badge variant="secondary">{screenerResult?.length ?? 0} results</Badge>
         </GlassCardHeader>
-        <DataTable columns={columns} data={scanResults} searchable searchKeys={["symbol", "name"]} />
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12 text-muted-foreground">
+            <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+            Scanning stocks...
+          </div>
+        ) : screenerResult ? (
+          <DataTable columns={columns} data={screenerResult} searchable searchKeys={["symbol", "name", "sector"]} />
+        ) : enabled ? (
+          <div className="text-center py-12 text-muted-foreground">
+            No results found. Try adjusting your filters.
+          </div>
+        ) : (
+          <div className="text-center py-12 text-muted-foreground">
+            Configure filters and click &quot;Scan Now&quot; to find stocks.
+          </div>
+        )}
       </GlassCard>
     </div>
   )
